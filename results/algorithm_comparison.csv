@@ -1,0 +1,5 @@
+algorithm,seed,mean_reward,std_reward,success_rate,mean_pellets,mean_steps,reward_ci_low,reward_ci_high,success_ci_low,success_ci_high
+PPO,42,-117.0,0.0,0.0,5.0,32.0,,,,
+PPO,aggregate,-117.0,0.0,0.0,5.0,32.0,-117.0,-117.0,0.0,0.0
+DQN,42,-329.0,0.0,0.0,3.0,29.0,,,,
+DQN,aggregate,-329.0,0.0,0.0,3.0,29.0,-329.0,-329.0,0.0,0.0

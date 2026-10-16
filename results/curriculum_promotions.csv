@@ -1,0 +1,2 @@
+seed,from_ghosts,to_ghosts,timestep,reason,rolling_success_rate
+42,1,2,32,max_steps,0.0

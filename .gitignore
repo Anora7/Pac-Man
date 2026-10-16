@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+
+# Pytest
+.pytest_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# MyPy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# TensorBoard
+runs/
+events.out.tfevents.*
+
+# Stable-Baselines3 Logs
+logs/
+tensorboard/
+
+# Models (keep directory, ignore contents)
+models/*
+!models/.gitkeep
+
+# Generated plots
+plots/*
+!plots/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment variables
+.env
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+.venvRL/
+.venv*/
