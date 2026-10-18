@@ -1,0 +1,4 @@
+seed,ghost_type,episodes,catch_rate
+baseline,rule,30,1.0
+42,learned,30,0.8333333333333334
+43,learned,30,0.16666666666666666

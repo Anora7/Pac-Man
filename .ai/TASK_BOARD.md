@@ -62,10 +62,10 @@ Only one major feature should normally be in progress at a time.
 
 ## Evaluation (TODO)
 
-- [ ] Load trained model
-- [ ] Evaluate multiple episodes
-- [ ] Record metrics
-- [ ] Display gameplay
+- [x] Load trained model
+- [x] Evaluate multiple episodes
+- [x] Record metrics
+- [x] Display gameplay
 
 ---
 
@@ -140,8 +140,19 @@ All requested optional experiment extensions are complete.
 - [x] Step 11 — Curriculum learning with ghost-count promotion
 - [x] Step 12 — One-command experiment runner
 - [x] Step 13 — Extension documentation and demo guide
+- [x] Add two-seed medium budgets and isolated outputs for core experiments
+- [x] Limit experiment processes to one PyTorch CPU thread
+- [x] Preserve `models/best_model.zip` during runner fallback baseline training
+- [x] Restrict robustness matrix to baseline and final medium checkpoints
+- [x] Add 10-episode default and model/ghost progress reporting
+- [x] Add 30-episode medium evaluations with distinct per-episode seeds
+- [x] Add saved-model-only evaluation mode for PPO-vs-DQN and reward ablation
+- [x] Plot all alternating rounds by seed using mean pellets and ghost catch rate
+- [x] Retrain medium alternating runs from copies of the baseline checkpoint
+- [x] Regenerate medium robustness matrix and analysis plots after retraining
+- [x] Correct medium alternating result seed labels and support UTF-8 BOM CSV input
 
-Final verification: `python -m pytest tests\ -q` — 494 passed.
+Final verification: `python -m pytest tests\ -q` — 508 passed.
 
 ---
 

@@ -286,6 +286,29 @@ class TestEvaluateWithModel:
         assert result.n_episodes == 3
         assert len(result.episodes) == 3
 
+    def test_each_episode_uses_a_distinct_seed(
+        self,
+        random_model: PPO,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seeds: list[int | None] = []
+        original_reset = PacmanEnvironment.reset
+
+        def recording_reset(
+            env: PacmanEnvironment,
+            seed: int | None = None,
+            options: dict | None = None,
+        ):
+            seeds.append(seed)
+            return original_reset(env, seed=seed, options=options)
+
+        monkeypatch.setattr(PacmanEnvironment, "reset", recording_reset)
+        evaluate(
+            EvaluationConfig(n_episodes=3, seed=42, verbose=False, max_steps=2),
+            model=random_model,
+        )
+        assert seeds == [42, 43, 44]
+
     def test_mean_reward_is_float(self, fast_result: EvaluationResult) -> None:
         assert isinstance(fast_result.mean_reward, float)
 

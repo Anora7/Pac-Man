@@ -17,18 +17,54 @@ verification.
 
 ```powershell
 python .\run_all_experiments.py --quick
+python .\run_all_experiments.py --medium
 python .\run_all_experiments.py --full
 ```
+
+Medium mode runs alternating, curriculum, PPO-vs-DQN, and reward ablation
+with two seeds. Its estimates target roughly one to two CPU hours per
+experiment (evaluation adds overhead). The medium outputs are isolated under
+`models\experiments\medium\`, `logs\experiments\medium\`,
+`results\medium\`, and `plots\experiments\medium\`; they do not replace full
+or quick-run artifacts or the baseline checkpoints.
+
+Evaluate the baseline against Pac-Man checkpoints from only the medium
+experiment tree: final per-round alternating checkpoints (including round 00)
+and final curriculum checkpoints, excluding callback and timestep archives.
+The learned-ghost column uses the newest medium alternating ghost checkpoint.
+The default is 10 episodes per model/ghost cell; override it with
+`--episodes`:
+
+```powershell
+python .\src\evaluate_matrix.py --medium --episodes 10
+```
+
+The matrix is written to `results\medium\robustness_matrix.csv` and
+`plots\experiments\medium\robustness_matrix.png`.
+
+Generate diagnostic plots comparing the baseline against the medium PPO
+checkpoint, with learning curves from both medium PPO Monitor logs:
+
+```powershell
+python .\src\analysis_plots.py --medium --episodes 20
+```
+
+The plots are saved under `plots\experiments\medium\`, with model-specific
+diagnostics and per-seed training-curve subdirectories.
 
 Run selected workflows by repeating `--only`:
 
 ```powershell
 python .\run_all_experiments.py --quick --only dqn --only plots
+python .\run_all_experiments.py --medium --only alternating
+python .\run_all_experiments.py --medium --only ablation
 ```
 
 It prints the workflows that ran or were skipped and lists output paths. The
 quick command executes the experiments in dependency order and generates
-their tables and plots.
+their tables and plots. Medium mode defaults to the four training workflows;
+selecting one with `--only` makes it convenient to run each in a separate
+terminal without sharing its model, log, result, or plot files.
 
 ## Learned ghosts and alternating PPO
 
@@ -46,8 +82,18 @@ opponent pool.
 
 ```powershell
 python .\src\train_alternating.py --quick
+python .\src\train_alternating.py --medium
 python .\src\train_alternating.py --full
 ```
+
+Medium mode uses two seeds and three rounds. Round 00 copies
+`models\best_model.zip` into each seed's medium checkpoint directory; each
+Pac-Man round continues from its prior model for 30,000 steps, and each ghost
+round trains for 50,000 steps. The opponent pool remains enabled. Reported
+training/evaluation metrics use 30 episodes with distinct episode seeds.
+After training, the final learned ghost for each seed is compared against
+baseline Pac-Man over 30 episodes and reported alongside the rule-ghost catch
+rate.
 
 **Outputs.** Round checkpoints are in
 `models\experiments\alternating\seed_<seed>\`; Monitor logs are under
@@ -108,8 +154,12 @@ shared seed runner.
 
 ```powershell
 python .\src\train_curriculum.py --quick
+python .\src\train_curriculum.py --medium
 python .\src\train_curriculum.py --full
 ```
+
+Medium mode uses two seeds and up to 100,000 steps for each ghost-count
+stage. Its outputs are isolated under the `medium` experiment directories.
 
 **Outputs.** Per-stage checkpoints and logs are under
 `models\experiments\curriculum\` and `logs\experiments\curriculum\`.
@@ -129,8 +179,20 @@ generates the Decision 001 report.
 
 ```powershell
 python .\src\compare_algorithms.py --quick
+python .\src\compare_algorithms.py --medium
 python .\src\compare_algorithms.py --full
 ```
+
+Medium mode compares PPO and DQN at 100,000 steps per algorithm for each of
+two matched seeds and evaluates each saved model over 30 episodes with
+distinct episode seeds. To update its CSV and plots without retraining:
+
+```powershell
+python .\src\compare_algorithms.py --eval-only
+```
+
+Its models, logs, reports, CSV, and plots use separate `medium` output
+directories.
 
 **Outputs.** Models and Monitor logs are under
 `models\experiments\algorithm_comparison\` and
@@ -152,8 +214,22 @@ evaluation.
 
 ```powershell
 python .\src\ablation.py --quick
+python .\src\ablation.py --medium
 python .\src\ablation.py --full
 ```
+
+Medium mode trains the baseline plus three focused reward variants
+(`caught_penalty_50`, `step_penalty_0`, and `pellet_reward_20`) for 100,000
+steps each across two seeds and evaluates each saved model over 30 episodes
+with distinct episode seeds. Re-evaluate the existing models without
+retraining:
+
+```powershell
+python .\src\ablation.py --eval-only
+```
+
+Its artifacts are stored separately under `medium` output directories; full
+mode retains the complete variant set.
 
 **Outputs.** Models and Monitor logs are under
 `models\experiments\ablation\` and `logs\experiments\ablation\`.

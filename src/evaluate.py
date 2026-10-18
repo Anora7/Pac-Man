@@ -267,7 +267,10 @@ def evaluate(
 
     try:
         for ep in range(1, config.n_episodes + 1):
-            obs, info = env.reset(seed=config.seed)
+            episode_seed = (
+                None if config.seed is None else config.seed + ep - 1
+            )
+            obs, info = env.reset(seed=episode_seed)
             total_reward = 0.0
             terminated = False
             truncated = False

@@ -11,13 +11,16 @@ from statistics import mean, stdev
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
-from stable_baselines3 import DQN
+import torch
+from stable_baselines3 import DQN, PPO
 
 from config import (
     DEFAULT_SEED,
     DQNConfig,
     MAX_STEPS,
+    MEDIUM_CPU_STEPS_PER_SECOND,
+    MEDIUM_SEEDS,
+    MEDIUM_TIMESTEPS,
     MultiSeedConfig,
     QUICK_EPISODES,
     QUICK_SEEDS,
@@ -33,6 +36,8 @@ from experiment_utils import (
 from train import TrainingConfig, train
 from train_dqn import train_dqn
 
+
+torch.set_num_threads(1)
 
 @dataclass(frozen=True)
 class AlgorithmComparisonConfig:
@@ -67,13 +72,34 @@ CSV_COLUMNS = (
 
 def run_comparison(
     config: AlgorithmComparisonConfig | None = None,
+    *,
+    eval_only: bool = False,
 ) -> list[dict[str, str | int | float]]:
     """Train and evaluate both algorithms, then write tables and plots."""
     cfg = config or AlgorithmComparisonConfig()
     cfg.models_dir.mkdir(parents=True, exist_ok=True)
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     cfg.results_path.parent.mkdir(parents=True, exist_ok=True)
-    seed_records = run_across_seeds(cfg.seeds, lambda seed: _run_seed(seed, cfg))
+    if eval_only:
+        print(
+            f"Re-evaluating saved PPO and DQN models for {len(cfg.seeds)} "
+            f"seed(s), {cfg.evaluation_episodes} episodes per model; no training."
+        )
+    else:
+        estimated_hours = (
+            2 * cfg.total_timesteps * len(cfg.seeds)
+            / MEDIUM_CPU_STEPS_PER_SECOND
+            / 3600
+        )
+        print(
+            f"Comparing PPO and DQN: {len(cfg.seeds)} seed(s), "
+            f"{cfg.total_timesteps:,} steps per algorithm, CPU only; estimated "
+            f"training time about {estimated_hours:.1f} hours."
+        )
+    seed_records = run_across_seeds(
+        cfg.seeds,
+        lambda seed: _run_seed(seed, cfg, eval_only=eval_only),
+    )
     records = [record for seed_result in seed_records for record in seed_result]
     _write_comparison_csv(cfg, records)
     _write_comparison_plots(cfg, records)
@@ -87,13 +113,24 @@ def run_comparison(
 def _run_seed(
     seed: int,
     config: AlgorithmComparisonConfig,
+    *,
+    eval_only: bool = False,
 ) -> list[dict[str, str | int | float]]:
     """Run the two algorithms for one seed and match their test episodes."""
     result_rows: list[dict[str, str | int | float]] = []
     for algorithm in ("ppo", "dqn"):
         model_dir = config.models_dir / algorithm / f"seed_{seed}"
         log_dir = config.logs_dir / algorithm / f"seed_{seed}"
-        if algorithm == "ppo":
+        model_path = model_dir / "final_model.zip"
+        if eval_only:
+            if not model_path.is_file():
+                raise FileNotFoundError(
+                    f"Missing saved {algorithm.upper()} model for seed {seed}: "
+                    f"{model_path}"
+                )
+            algorithm_class = PPO if algorithm == "ppo" else DQN
+            model = algorithm_class.load(str(model_path), device="cpu")
+        elif algorithm == "ppo":
             ppo_config = TrainingConfig(
                 models_dir=model_dir,
                 logs_dir=log_dir,
@@ -103,7 +140,7 @@ def _run_seed(
                 batch_size=min(64, max(2, min(2048, config.total_timesteps))),
                 n_epochs=10,
                 eval_freq=max(1, config.total_timesteps // 2),
-                n_eval_episodes=1,
+                n_eval_episodes=config.evaluation_episodes,
                 checkpoint_freq=max(1, config.total_timesteps),
                 max_steps=config.max_steps,
                 seed=seed,
@@ -118,7 +155,7 @@ def _run_seed(
                 logs_dir=log_dir,
                 tensorboard_dir=log_dir / "tensorboard",
                 eval_freq=max(1, config.total_timesteps // 2),
-                n_eval_episodes=1,
+                n_eval_episodes=config.evaluation_episodes,
                 checkpoint_freq=max(1, config.total_timesteps),
                 max_steps=config.max_steps,
                 seed=seed,
@@ -134,7 +171,7 @@ def _run_seed(
             model = train_dqn(dqn_config)
         evaluation = evaluate(
             EvaluationConfig(
-                model_path=model_dir / "final_model.zip",
+                model_path=model_path,
                 n_episodes=config.evaluation_episodes,
                 max_steps=config.max_steps,
                 seed=seed + 10_000,
@@ -311,23 +348,52 @@ def _quick_config() -> AlgorithmComparisonConfig:
     )
 
 
+def _medium_config() -> AlgorithmComparisonConfig:
+    """Return a two-seed, 100k-step matched PPO/DQN comparison."""
+    medium_dqn = replace(
+        DQNConfig(),
+        total_timesteps=MEDIUM_TIMESTEPS,
+        eval_freq=MEDIUM_TIMESTEPS // 2,
+        checkpoint_freq=MEDIUM_TIMESTEPS,
+    )
+    return AlgorithmComparisonConfig(
+        seeds=tuple(range(DEFAULT_SEED, DEFAULT_SEED + MEDIUM_SEEDS)),
+        total_timesteps=MEDIUM_TIMESTEPS,
+        evaluation_episodes=30,
+        max_steps=MAX_STEPS,
+        models_dir=Path("models/experiments/medium/algorithm_comparison"),
+        logs_dir=Path("logs/experiments/medium/algorithm_comparison"),
+        results_path=Path("results/medium/algorithm_comparison.csv"),
+        report_path=Path("results/medium/algorithm_comparison_report.md"),
+        plots_dir=Path("plots/experiments/medium/algorithm_comparison"),
+        dqn_config=medium_dqn,
+    )
+
+
 def main() -> None:
     """Run the algorithm comparison in quick or full mode."""
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--quick", action="store_true")
+    modes.add_argument("--medium", action="store_true")
     modes.add_argument("--full", action="store_true")
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="Re-evaluate saved medium models without training.",
+    )
     args = parser.parse_args()
-    config = _quick_config() if args.quick else AlgorithmComparisonConfig()
-    estimated_minutes = (
-        2 * config.total_timesteps * len(config.seeds) / 90 / 60
-    )
-    print(
-        f"Comparing PPO and DQN: {len(config.seeds)} seed(s), "
-        f"{config.total_timesteps:,} steps each, CPU only. "
-        f"Estimated training time: at least {estimated_minutes:.1f} min."
-    )
-    run_comparison(config)
+    if args.eval_only and (args.quick or args.full):
+        parser.error("--eval-only is only supported for the medium preset.")
+    if args.eval_only:
+        config = _medium_config()
+    elif args.quick:
+        config = _quick_config()
+    elif args.medium:
+        config = _medium_config()
+    else:
+        config = AlgorithmComparisonConfig()
+    run_comparison(config, eval_only=args.eval_only)
 
 
 if __name__ == "__main__":

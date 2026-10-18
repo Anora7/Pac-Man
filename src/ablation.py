@@ -11,10 +11,15 @@ from statistics import mean, stdev
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import torch
+from stable_baselines3 import PPO
 
 from config import (
     AblationConfig,
     DEFAULT_SEED,
+    MEDIUM_CPU_STEPS_PER_SECOND,
+    MEDIUM_SEEDS,
+    MEDIUM_TIMESTEPS,
     MultiSeedConfig,
     QUICK_EPISODES,
     QUICK_SEEDS,
@@ -26,6 +31,15 @@ from evaluate import EvaluationConfig, evaluate
 from experiment_utils import aggregate_metrics, run_across_seeds
 from train import TrainingConfig, train
 
+
+torch.set_num_threads(1)
+
+MEDIUM_VARIANTS = (
+    "baseline",
+    "caught_penalty_50",
+    "step_penalty_0",
+    "pellet_reward_20",
+)
 
 RESULT_COLUMNS = (
     "variant",
@@ -43,14 +57,33 @@ RESULT_COLUMNS = (
 
 def run_ablation(
     config: AblationConfig | None = None,
+    *,
+    eval_only: bool = False,
 ) -> list[dict[str, str | int | float]]:
     """Train/evaluate every reward variant and save the study outputs."""
     cfg = config or AblationConfig()
+    variants = _variants_for_config(cfg)
     cfg.models_dir.mkdir(parents=True, exist_ok=True)
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     cfg.results_path.parent.mkdir(parents=True, exist_ok=True)
+    if eval_only:
+        print(
+            f"Re-evaluating saved models for {len(variants)} reward variants "
+            f"and {len(cfg.seeds)} seed(s), "
+            f"{cfg.evaluation_episodes} episodes per model; no training."
+        )
+    else:
+        estimate_hours = (
+            len(variants) * len(cfg.seeds) * cfg.total_timesteps
+            / MEDIUM_CPU_STEPS_PER_SECOND / 3600
+        )
+        print(
+            f"Running {len(variants)} reward variants with {len(cfg.seeds)} seed(s), "
+            f"{cfg.total_timesteps:,} steps each on CPU; estimated training time "
+            f"about {estimate_hours:.1f} hours."
+        )
     records: list[dict[str, str | int | float]] = []
-    for variant_name, reward_config in REWARD_ABLATION_VARIANTS:
+    for variant_name, reward_config in variants:
         print(
             f"Reward ablation {variant_name}: {len(cfg.seeds)} seed(s), "
             f"{cfg.total_timesteps:,} CPU steps per seed."
@@ -62,6 +95,7 @@ def run_ablation(
                 reward_config,
                 seed,
                 cfg,
+                eval_only=eval_only,
             ),
         )
         records.extend(variant_records)
@@ -79,31 +113,42 @@ def _run_variant_seed(
     reward_config: RewardConfig,
     seed: int,
     config: AblationConfig,
+    *,
+    eval_only: bool = False,
 ) -> dict[str, str | int | float]:
     """Run one PPO training and evaluation pair for a variant and seed."""
     model_dir = config.models_dir / variant_name / f"seed_{seed}"
     log_dir = config.logs_dir / variant_name / f"seed_{seed}"
-    model = train(
-        TrainingConfig(
-            models_dir=model_dir,
-            logs_dir=log_dir,
-            tensorboard_dir=log_dir / "tensorboard",
-            total_timesteps=config.total_timesteps,
-            n_steps=config.n_steps,
-            batch_size=config.batch_size,
-            n_epochs=config.n_epochs,
-            eval_freq=config.eval_freq,
-            n_eval_episodes=1,
-            checkpoint_freq=max(1, config.total_timesteps),
-            max_steps=config.max_steps,
-            seed=seed,
-            reward_config=reward_config,
-            verbose=0,
+    model_path = model_dir / "final_model.zip"
+    if eval_only:
+        if not model_path.is_file():
+            raise FileNotFoundError(
+                f"Missing saved model for variant {variant_name}, seed {seed}: "
+                f"{model_path}"
+            )
+        model = PPO.load(str(model_path), device="cpu")
+    else:
+        model = train(
+            TrainingConfig(
+                models_dir=model_dir,
+                logs_dir=log_dir,
+                tensorboard_dir=log_dir / "tensorboard",
+                total_timesteps=config.total_timesteps,
+                n_steps=config.n_steps,
+                batch_size=config.batch_size,
+                n_epochs=config.n_epochs,
+                eval_freq=config.eval_freq,
+                n_eval_episodes=config.evaluation_episodes,
+                checkpoint_freq=max(1, config.total_timesteps),
+                max_steps=config.max_steps,
+                seed=seed,
+                reward_config=reward_config,
+                verbose=0,
+            )
         )
-    )
     result = evaluate(
         EvaluationConfig(
-            model_path=model_dir / "final_model.zip",
+            model_path=model_path,
             n_episodes=config.evaluation_episodes,
             seed=seed + 10_000,
             max_steps=config.max_steps,
@@ -129,7 +174,7 @@ def _summaries(
     """Compute metric statistics per reward variant."""
     output: dict[str, dict[str, object]] = {}
     seed_config = MultiSeedConfig(seeds=config.seeds)
-    for variant_name, _ in REWARD_ABLATION_VARIANTS:
+    for variant_name, _ in _variants_for_config(config):
         selected = [r for r in records if r["variant"] == variant_name]
         output[variant_name] = aggregate_metrics(
             selected,
@@ -156,7 +201,7 @@ def _write_results(
                 "success_ci_low": "",
                 "success_ci_high": "",
             })
-        for variant_name, _ in REWARD_ABLATION_VARIANTS:
+        for variant_name, _ in _variants_for_config(config):
             summary = summaries[variant_name]
             reward = summary["mean_reward"]
             success = summary["success_rate"]
@@ -179,7 +224,7 @@ def _write_plot(
     records: list[dict[str, str | int | float]],
 ) -> None:
     """Plot reward and scale-independent outcomes by variant."""
-    variant_names = [name for name, _ in REWARD_ABLATION_VARIANTS]
+    variant_names = [name for name, _ in _variants_for_config(config)]
     metrics = (
         ("mean_reward", "Mean reward"),
         ("success_rate", "Success rate"),
@@ -225,7 +270,7 @@ def _write_summary(
         for metric in ("success_rate", "mean_pellets", "mean_steps")
     }
     effects: list[tuple[float, str, str, float]] = []
-    for variant_name, _ in REWARD_ABLATION_VARIANTS:
+    for variant_name, _ in _variants_for_config(config):
         if variant_name == "baseline":
             continue
         rows = [row for row in records if row["variant"] == variant_name]
@@ -271,26 +316,59 @@ def _quick_config() -> AblationConfig:
     )
 
 
+def _medium_config() -> AblationConfig:
+    """Return a two-seed, four-variant medium training budget."""
+    return replace(
+        AblationConfig(),
+        seeds=tuple(range(DEFAULT_SEED, DEFAULT_SEED + MEDIUM_SEEDS)),
+        variant_names=MEDIUM_VARIANTS,
+        total_timesteps=MEDIUM_TIMESTEPS,
+        evaluation_episodes=30,
+        eval_freq=10_000,
+        models_dir=Path("models/experiments/medium/ablation"),
+        logs_dir=Path("logs/experiments/medium/ablation"),
+        results_path=Path("results/medium/ablation_results.csv"),
+        report_path=Path("results/medium/ablation_summary.md"),
+        plots_dir=Path("plots/experiments/medium/ablation"),
+    )
+
+
+def _variants_for_config(
+    config: AblationConfig,
+) -> tuple[tuple[str, RewardConfig], ...]:
+    """Select configured variants while preserving their canonical order."""
+    selected = set(config.variant_names)
+    return tuple(
+        (name, reward_config)
+        for name, reward_config in REWARD_ABLATION_VARIANTS
+        if name in selected
+    )
+
+
 def main() -> None:
     """Run reward ablation study in quick or full mode."""
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--quick", action="store_true")
+    modes.add_argument("--medium", action="store_true")
     modes.add_argument("--full", action="store_true")
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="Re-evaluate saved medium models without training.",
+    )
     args = parser.parse_args()
-    config = _quick_config() if args.quick else AblationConfig()
-    estimate = (
-        len(REWARD_ABLATION_VARIANTS)
-        * len(config.seeds)
-        * config.total_timesteps
-        / 90
-        / 60
-    )
-    print(
-        f"Running {len(REWARD_ABLATION_VARIANTS)} reward variants on CPU; "
-        f"estimated training time at least {estimate:.1f} min."
-    )
-    run_ablation(config)
+    if args.eval_only and (args.quick or args.full):
+        parser.error("--eval-only is only supported for the medium preset.")
+    if args.eval_only:
+        config = _medium_config()
+    elif args.quick:
+        config = _quick_config()
+    elif args.medium:
+        config = _medium_config()
+    else:
+        config = AblationConfig()
+    run_ablation(config, eval_only=args.eval_only)
 
 
 if __name__ == "__main__":

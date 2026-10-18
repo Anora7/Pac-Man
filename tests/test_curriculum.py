@@ -8,7 +8,7 @@ import pytest
 
 from config import CurriculumConfig
 from environment import PacmanEnvironment
-from train_curriculum import _SeedRun, _plot_curriculum
+from train_curriculum import _SeedRun, _medium_config, _plot_curriculum
 
 
 def test_environment_supports_one_ghost_without_changing_observation_shape() -> None:
@@ -29,6 +29,16 @@ def test_environment_rejects_unavailable_ghost_count() -> None:
 def test_curriculum_config_validates_promotion_settings() -> None:
     with pytest.raises(ValueError, match="promotion_success_threshold"):
         CurriculumConfig(promotion_success_threshold=1.1)
+
+
+def test_medium_curriculum_config_has_two_seed_budget_and_isolated_paths() -> None:
+    config = _medium_config()
+    assert config.seeds == (42, 43)
+    assert config.max_steps_per_stage == 100_000
+    assert config.evaluation_episodes == 2
+    assert "medium" in str(config.models_dir)
+    assert "medium" in str(config.results_path)
+    assert "medium" in str(config.plot_path)
 
 
 def test_curriculum_plot_is_saved_even_without_completed_episodes(

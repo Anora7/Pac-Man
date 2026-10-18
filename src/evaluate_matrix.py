@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -25,38 +26,53 @@ class ModelEntry:
     path: Path
 
 
-def discover_models(models_dir: Path) -> list[ModelEntry]:
-    """Find the baseline and available extension Pac-Man checkpoints."""
+def discover_models(
+    models_dir: Path,
+    experiment_models_dir: Path | None = None,
+) -> list[ModelEntry]:
+    """Find the baseline and final Pac-Man checkpoints from medium runs."""
     entries: list[ModelEntry] = []
     baseline = models_dir / "best_model.zip"
-    if baseline.exists():
+    if baseline.is_file():
         entries.append(ModelEntry("baseline", baseline))
     else:
         print(f"Skipping missing baseline model: {baseline}")
 
-    for model_path in sorted(models_dir.rglob("*.zip")):
-        relative = model_path.relative_to(models_dir)
-        parts = relative.parts
-        stem = model_path.stem.lower()
-        if model_path == baseline:
-            continue
-        if "improved_observation" in stem or "improved-observation" in stem:
-            label = f"improved-observation-{model_path.stem}"
-        elif "alternating" in parts and stem.startswith("round_") and "pacman" in stem:
-            label = "-".join((*parts[-3:-1], model_path.stem))
-        elif "curriculum" in parts:
-            label = f"curriculum-{model_path.stem}"
-        else:
-            continue
-        entries.append(ModelEntry(label, model_path))
+    medium_dir = experiment_models_dir or models_dir / "experiments" / "medium"
+    alternating_dir = medium_dir / "alternating"
+    if alternating_dir.is_dir():
+        for model_path in sorted(alternating_dir.rglob("round_*_pacman.zip")):
+            if (
+                model_path.is_file()
+                and not any(part.endswith("_callbacks") for part in model_path.parts)
+                and re.fullmatch(r"round_\d{2}_pacman\.zip", model_path.name)
+            ):
+                relative = model_path.relative_to(alternating_dir)
+                label = "-".join((*relative.parts[:-1], model_path.stem))
+                entries.append(ModelEntry(label, model_path))
+
+    curriculum_dir = medium_dir / "curriculum"
+    if curriculum_dir.is_dir():
+        for model_path in sorted(curriculum_dir.rglob("final_model.zip")):
+            if (
+                model_path.is_file()
+                and not any(part.endswith("_callbacks") for part in model_path.parts)
+            ):
+                relative = model_path.relative_to(curriculum_dir)
+                label = "-".join(("curriculum", *relative.parts[:-1], model_path.stem))
+                entries.append(ModelEntry(label, model_path))
+
     return entries
 
 
-def latest_ghost_model(models_dir: Path) -> Path | None:
+def latest_ghost_model(
+    models_dir: Path,
+    experiment_models_dir: Path | None = None,
+) -> Path | None:
     """Return the most recently modified alternating ghost checkpoint."""
-    candidates = list(
-        (models_dir / "experiments" / "alternating").rglob("*_ghost.zip")
-    )
+    medium_dir = experiment_models_dir or models_dir / "experiments" / "medium"
+    alternating_dir = medium_dir / "alternating"
+    candidates = list(alternating_dir.rglob("*_ghost.zip"))
     return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
 
 
@@ -65,20 +81,32 @@ def run_evaluation_matrix(
 ) -> list[dict[str, str | float]]:
     """Evaluate available models and save CSV plus annotated heatmaps."""
     cfg = config or RobustnessConfig()
-    models = discover_models(cfg.models_dir)
+    models = discover_models(cfg.models_dir, cfg.experiment_models_dir)
     if not models:
         print(f"No Pac-Man models available under {cfg.models_dir}.")
-    learned_path = latest_ghost_model(cfg.models_dir)
+    print(f"Found {len(models)} Pac-Man models to evaluate.")
+    learned_path = latest_ghost_model(
+        cfg.models_dir,
+        cfg.experiment_models_dir,
+    )
     ghost_types = ["random", "chase", "rule", "personality"]
     if learned_path is None:
         print("Skipping learned ghost column: no alternating ghost model found.")
     else:
+        print(f"Using learned ghost model: {learned_path}")
         ghost_types.append("learned")
 
     rows: list[dict[str, str | float]] = []
+    total_evaluations = len(models) * len(ghost_types)
+    running_count = 0
     for model_entry in models:
         observation_config = load_observation_config(model_entry.path)
         for ghost_type in ghost_types:
+            running_count += 1
+            print(
+                f"Progress {running_count}/{total_evaluations}: "
+                f"model={model_entry.name}, ghost_type={ghost_type}"
+            )
             result = evaluate(
                 EvaluationConfig(
                     model_path=model_entry.path,
@@ -99,6 +127,10 @@ def run_evaluation_matrix(
                 "mean_pellets": result.mean_pellets_collected,
             })
 
+    print(
+        f"Evaluated {len(rows)} model/ghost combinations across "
+        f"{len(models)} Pac-Man models and {len(ghost_types)} ghost policies."
+    )
     _write_matrix_csv(cfg.results_path, rows)
     _plot_matrix(cfg.plot_path, rows)
     print(f"Robustness matrix CSV: {cfg.results_path}")
@@ -184,14 +216,42 @@ def _quick_config() -> RobustnessConfig:
     )
 
 
+def _medium_config() -> RobustnessConfig:
+    """Use medium experiment checkpoints and isolated robustness outputs."""
+    return replace(
+        RobustnessConfig(),
+        experiment_models_dir=Path("models/experiments/medium"),
+        episodes=10,
+        results_path=Path("results/medium/robustness_matrix.csv"),
+        plot_path=Path("plots/experiments/medium/robustness_matrix.png"),
+    )
+
+
 def main() -> None:
     """Run the command-line robustness evaluation."""
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--quick", action="store_true")
+    mode.add_argument("--medium", action="store_true")
     mode.add_argument("--full", action="store_true")
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=10,
+        help="Override the number of evaluation episodes per model/ghost cell.",
+    )
     args = parser.parse_args()
-    run_evaluation_matrix(_quick_config() if args.quick else RobustnessConfig())
+    if args.episodes < 1:
+        parser.error("--episodes must be at least 1.")
+    config = (
+        _quick_config()
+        if args.quick
+        else _medium_config()
+        if args.medium
+        else RobustnessConfig()
+    )
+    config = replace(config, episodes=args.episodes)
+    run_evaluation_matrix(config)
 
 
 if __name__ == "__main__":

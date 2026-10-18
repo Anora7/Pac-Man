@@ -175,8 +175,21 @@ Maze layout: 12×12 static grid with 67 regular pellets, 2 power pellets, 2 ghos
 All 13 steps of the opt-in extension plan are complete. The baseline
 723-element observation, original reward values, and rule-based ghost policy
 remain the defaults. `run_all_experiments.py --quick` completed end to end and
-generated the extension CSVs, reports, and plots. The final full test suite
-passed: 494 tests.
+generated the extension CSVs, reports, and plots. A two-seed `--medium`
+profile now provides bounded budgets and independent output directories for
+alternating, curriculum, PPO-vs-DQN, and selected reward-ablation runs. Full
+and quick profiles remain unchanged. Robustness-matrix discovery now includes
+only the baseline and final medium alternating/curriculum checkpoints, reports
+per-cell progress, and defaults to 10 episodes.
+
+The medium-results refresh is complete. PPO-vs-DQN and reward ablation were
+re-evaluated from saved models over 30 episodes per model with distinct episode
+seeds. Alternating training ran three rounds for seeds 42 and 43, copying the
+baseline for round zero and using 30,000 Pac-Man plus 50,000 ghost steps per
+round. Its final learned ghosts caught baseline Pac-Man in 83.3% and 16.7% of
+30 episodes respectively; the rule ghost catch rate was 100%. The robustness
+matrix contains 11 Pac-Man models across five policies (55 cells, 10 episodes
+per cell), and medium analysis plots were regenerated.
 
 ---
 
@@ -201,6 +214,9 @@ Current known risks:
 
 | Date | Task | Status |
 |------|------|--------|
+| 2026-10-18 | Refresh medium evaluations, alternating training, robustness matrix, and analysis plots | ✅ |
+| 2026-10-18 | Restrict robustness matrix to final medium checkpoints and add progress output | ✅ |
+| 2026-10-16 | Add isolated medium CPU budgets for experiment workflows | ✅ |
 | YYYY-MM-DD | Repository initialization | ✅ |
 | YYYY-MM-DD | Documentation framework | ✅ |
 
@@ -208,7 +224,8 @@ Current known risks:
 
 # Next Immediate Task
 
-None. All requested extension tasks and final verification are complete.
+None. Medium evaluation, training, matrix, plots, and regression tests are
+complete.
 
 ---
 

@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import (
     BaseCallback,
@@ -23,6 +24,9 @@ from stable_baselines3.common.env_util import make_vec_env
 from config import (
     DEFAULT_SEED,
     GHOST_COUNT,
+    MEDIUM_CPU_STEPS_PER_SECOND,
+    MEDIUM_SEEDS,
+    MEDIUM_TIMESTEPS,
     QUICK_EPISODES,
     QUICK_SEEDS,
     QUICK_TIMESTEPS,
@@ -34,6 +38,8 @@ from experiment_utils import read_monitor_metric, run_across_seeds
 from environment import PacmanEnvironment
 from observation_metadata import save_observation_config
 
+
+torch.set_num_threads(1)
 
 PROMOTION_COLUMNS = (
     "seed",
@@ -91,7 +97,11 @@ def run_curriculum(
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     cfg.results_path.parent.mkdir(parents=True, exist_ok=True)
     estimated_minutes = (
-        cfg.max_steps_per_stage * GHOST_COUNT * len(cfg.seeds) / 90 / 60
+        cfg.max_steps_per_stage
+        * GHOST_COUNT
+        * len(cfg.seeds)
+        / MEDIUM_CPU_STEPS_PER_SECOND
+        / 60
     )
     print(
         f"Curriculum: ghosts 1..{GHOST_COUNT}, {len(cfg.seeds)} seed(s), "
@@ -288,14 +298,38 @@ def _quick_config() -> CurriculumConfig:
     )
 
 
+def _medium_config() -> CurriculumConfig:
+    """Return a two-seed curriculum with 100k steps per ghost-count stage."""
+    return replace(
+        CurriculumConfig(),
+        seeds=tuple(range(DEFAULT_SEED, DEFAULT_SEED + MEDIUM_SEEDS)),
+        max_steps_per_stage=MEDIUM_TIMESTEPS,
+        evaluation_episodes=2,
+        eval_freq=10_000,
+        models_dir=Path("models/experiments/medium/curriculum"),
+        logs_dir=Path("logs/experiments/medium/curriculum"),
+        results_path=Path("results/medium/curriculum_promotions.csv"),
+        plot_path=Path(
+            "plots/experiments/medium/curriculum/curriculum_progress.png"
+        ),
+    )
+
+
 def main() -> None:
     """Run curriculum training in quick or full mode."""
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--quick", action="store_true")
+    modes.add_argument("--medium", action="store_true")
     modes.add_argument("--full", action="store_true")
     args = parser.parse_args()
-    run_curriculum(_quick_config() if args.quick else CurriculumConfig())
+    if args.quick:
+        config = _quick_config()
+    elif args.medium:
+        config = _medium_config()
+    else:
+        config = CurriculumConfig()
+    run_curriculum(config)
 
 
 if __name__ == "__main__":

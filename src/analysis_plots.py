@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
+from dataclasses import replace
 from pathlib import Path
 from typing import Mapping
 
@@ -17,11 +19,12 @@ from stable_baselines3 import PPO
 
 from config import (
     AnalysisPlotConfig,
+    DEFAULT_SEED,
     MAX_STEPS,
     ObservationConfig,
 )
 from environment import PacmanEnvironment
-from evaluate import EvaluationConfig, EvaluationResult, _configure_ghosts
+from evaluate import EvaluationConfig, EvaluationResult, _configure_ghosts, evaluate
 from observation_metadata import load_observation_config
 from plots import PlotConfig, generate_all_plots
 
@@ -261,32 +264,39 @@ def plot_alternating_dashboard(
     results_csv: Path,
     config: AnalysisPlotConfig | None = None,
 ) -> Path:
-    """Plot Pac-Man success and ghost catch rates over alternating rounds."""
+    """Plot Pac-Man pellet collection and ghost catches by seed and round."""
     cfg = config or AnalysisPlotConfig()
     rows = _read_csv_rows(results_csv)
     if not rows:
         raise ValueError(f"No alternating result rows found in {results_csv}.")
-    grouped: dict[int, list[dict[str, str]]] = {}
-    for row in rows:
-        grouped.setdefault(int(row["round"]), []).append(row)
-    rounds = sorted(grouped)
-    pacman_rates = [
-        float(np.mean([float(row["pacman_success_rate"]) for row in grouped[index]]))
-        for index in rounds
-    ]
-    ghost_rates = [
-        float(np.mean([float(row["ghost_catch_rate"]) for row in grouped[index]]))
-        for index in rounds
-    ]
+    seed_values = sorted({int(row["seed"]) for row in rows})
+    markers = ("o", "s", "^", "D", "v", "P", "X")
     cfg.plots_dir.mkdir(parents=True, exist_ok=True)
     figure, left = plt.subplots(figsize=cfg.figsize)
     right = left.twinx()
-    left.plot(rounds, pacman_rates, marker="o", label="Pac-Man success rate")
-    right.plot(rounds, ghost_rates, marker="s", color="#d95f02", label="Ghost catch rate")
+    for index, seed in enumerate(seed_values):
+        seed_rows = sorted(
+            (row for row in rows if int(row["seed"]) == seed),
+            key=lambda row: int(row["round"]),
+        )
+        rounds = [int(row["round"]) for row in seed_rows]
+        marker = markers[index % len(markers)]
+        left.plot(
+            rounds,
+            [float(row["pacman_mean_pellets"]) for row in seed_rows],
+            marker=marker,
+            label=f"Seed {seed}: Pac-Man mean pellets",
+        )
+        right.plot(
+            rounds,
+            [float(row["ghost_catch_rate"]) for row in seed_rows],
+            marker=marker,
+            linestyle="--",
+            label=f"Seed {seed}: Ghost catch rate",
+        )
     left.set_xlabel("Alternating training round")
-    left.set_ylabel("Pac-Man success rate")
+    left.set_ylabel("Mean Pac-Man pellets eaten")
     right.set_ylabel("Ghost catch rate")
-    left.set_ylim(0.0, 1.0)
     right.set_ylim(0.0, 1.0)
     left.set_title("Pac-Man and ghost co-evolution")
     handles_left, labels_left = left.get_legend_handles_labels()
@@ -364,7 +374,7 @@ def capture_episode_frames(
 
 
 def _read_csv_rows(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as source:
+    with path.open(newline="", encoding="utf-8-sig") as source:
         return list(csv.DictReader(source))
 
 
@@ -394,3 +404,101 @@ def _save_heatmap(
     figure.savefig(output_path, dpi=config.dpi, bbox_inches="tight")
     plt.close(figure)
     return output_path
+
+
+def run_medium_analysis(episodes: int = 20) -> list[Path]:
+    """Compare the baseline and medium PPO models and plot medium training logs."""
+    if episodes < 1:
+        raise ValueError("episodes must be at least 1.")
+
+    model_paths = {
+        "baseline": Path("models/best_model.zip"),
+        "medium_ppo_seed_42": Path(
+            "models/experiments/medium/algorithm_comparison/ppo/"
+            "seed_42/final_model.zip"
+        ),
+    }
+    monitor_paths = {
+        seed_name: Path(
+            "logs/experiments/medium/algorithm_comparison/ppo"
+            f"/{seed_name}/0.monitor.csv"
+        )
+        for seed_name in ("seed_42", "seed_43")
+    }
+    alternating_results = Path("results/medium/alternating_rounds.csv")
+    required_paths = (*model_paths.values(), *monitor_paths.values(), alternating_results)
+    missing = [path for path in required_paths if not path.is_file()]
+    if missing:
+        missing_paths = ", ".join(str(path) for path in missing)
+        raise FileNotFoundError(f"Missing medium analysis inputs: {missing_paths}")
+
+    base_config = AnalysisPlotConfig(
+        plots_dir=Path("plots/experiments/medium"),
+        evaluation_episodes=episodes,
+    )
+    results: dict[str, EvaluationResult] = {}
+    outputs: list[Path] = []
+    for name, model_path in model_paths.items():
+        model_config = replace(base_config, plots_dir=base_config.plots_dir / name)
+        results[name] = evaluate(
+            EvaluationConfig(
+                model_path=model_path,
+                n_episodes=episodes,
+                max_steps=MAX_STEPS,
+                seed=DEFAULT_SEED,
+                verbose=False,
+            )
+        )
+        outputs.extend(
+            plot_visitation_heatmaps(
+                model_path,
+                episodes=episodes,
+                seed=DEFAULT_SEED,
+                max_steps=MAX_STEPS,
+                config=model_config,
+            ).values()
+        )
+        outputs.extend(
+            plot_value_function_danger_maps(
+                model_path,
+                config=model_config,
+            ).values()
+        )
+
+    for seed_name, monitor_path in monitor_paths.items():
+        log_config = replace(
+            base_config,
+            plots_dir=base_config.plots_dir / "training_curves" / seed_name,
+        )
+        outputs.extend(plot_learning_curves(monitor_path, config=log_config))
+    outputs.append(plot_alternating_dashboard(alternating_results, base_config))
+    outputs.append(plot_outcome_breakdown(results, base_config))
+    for output in outputs:
+        print(f"Analysis plot: {output}")
+    return outputs
+
+
+def main() -> None:
+    """Run analysis plots for the baseline and medium experiment outputs."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--medium",
+        action="store_true",
+        help="Use medium PPO checkpoints, Monitor logs, and output directories.",
+    )
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=20,
+        help="Evaluation and visitation episodes per model (default: 20).",
+    )
+    args = parser.parse_args()
+    if not args.medium:
+        parser.error("select --medium to run analysis on medium experiment outputs.")
+    if args.episodes < 1:
+        parser.error("--episodes must be at least 1.")
+    run_medium_analysis(args.episodes)
+
+
+if __name__ == "__main__":
+    main()

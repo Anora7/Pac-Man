@@ -195,6 +195,14 @@ QUICK_TIMESTEPS: int = 32
 QUICK_EPISODES: int = 1
 QUICK_SEEDS: int = 1
 
+# Medium CPU-only experiment budgets.
+MEDIUM_SEEDS: int = 2
+MEDIUM_TIMESTEPS: int = 100_000
+MEDIUM_ALTERNATING_ROUNDS: int = 3
+MEDIUM_ALTERNATING_STEPS_PER_ROUND: int = 30_000
+MEDIUM_GHOST_STEPS_PER_ROUND: int = 50_000
+MEDIUM_CPU_STEPS_PER_SECOND: int = 120
+
 
 # ---------------------------------------------------------------------------
 # Power-mode timing
@@ -269,6 +277,7 @@ class RobustnessConfig:
     """Defaults for model-by-ghost-type robustness evaluations."""
 
     models_dir: Path = Path("models")
+    experiment_models_dir: Path | None = None
     episodes: int = 10
     max_steps: int = MAX_STEPS
     seed: int = DEFAULT_SEED
@@ -332,6 +341,9 @@ class AblationConfig:
     """Shared PPO training bounds and output locations for reward ablations."""
 
     seeds: tuple[int, ...] = (42, 43, 44)
+    variant_names: tuple[str, ...] = tuple(
+        name for name, _ in REWARD_ABLATION_VARIANTS
+    )
     total_timesteps: int = TOTAL_TIMESTEPS
     evaluation_episodes: int = 10
     max_steps: int = MAX_STEPS
@@ -348,6 +360,19 @@ class AblationConfig:
     def __post_init__(self) -> None:
         if not self.seeds or len(set(self.seeds)) != len(self.seeds):
             raise ValueError("Ablation seeds must be non-empty and unique.")
+        available_variants = {
+            name for name, _ in REWARD_ABLATION_VARIANTS
+        }
+        if (
+            not self.variant_names
+            or len(set(self.variant_names)) != len(self.variant_names)
+            or "baseline" not in self.variant_names
+            or not set(self.variant_names).issubset(available_variants)
+        ):
+            raise ValueError(
+                "Ablation variant_names must be unique, include baseline, "
+                "and contain only configured variants."
+            )
         if self.total_timesteps < 1 or self.evaluation_episodes < 1:
             raise ValueError("Ablation training and evaluation counts must be positive.")
         if self.max_steps < 1 or self.eval_freq < 1:

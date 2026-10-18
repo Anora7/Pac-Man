@@ -5,28 +5,38 @@ from __future__ import annotations
 import argparse
 import csv
 import random
+import shutil
 import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO
 
 import numpy as np
+import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
 
 from config import (
     DEFAULT_SEED,
+    MEDIUM_ALTERNATING_ROUNDS,
+    MEDIUM_ALTERNATING_STEPS_PER_ROUND,
+    MEDIUM_GHOST_STEPS_PER_ROUND,
+    MEDIUM_CPU_STEPS_PER_SECOND,
+    MEDIUM_SEEDS,
     TRAINING_DEVICE,
     AlternatingConfig,
     ObservationConfig,
 )
 from environment import PacmanEnvironment
+from evaluate import EvaluationConfig, evaluate
 from experiment_utils import run_across_seeds
 from ghost_environment import GhostEnvironment
 from ghost_policies import LearnedGhostPolicy
 from observation_metadata import load_observation_config, save_observation_config
 
+
+torch.set_num_threads(1)
 
 RESULT_COLUMNS = (
     "seed",
@@ -47,6 +57,17 @@ def run_alternating(
     cfg.models_dir.mkdir(parents=True, exist_ok=True)
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     cfg.results_path.parent.mkdir(parents=True, exist_ok=True)
+    estimated_steps = len(cfg.seeds) * (
+        cfg.pacman_steps_per_round * cfg.n_rounds
+        + cfg.ghost_steps_per_round * cfg.n_rounds
+    )
+    estimated_hours = estimated_steps / MEDIUM_CPU_STEPS_PER_SECOND / 3600
+    print(
+        f"Alternating training: {cfg.n_rounds} rounds, {len(cfg.seeds)} seed(s), "
+        f"{cfg.pacman_steps_per_round:,} Pac-Man and "
+        f"{cfg.ghost_steps_per_round:,} ghost steps per round; estimated CPU "
+        f"training time about {estimated_hours:.1f} hours."
+    )
     records: list[dict[str, float | int]] = []
     with cfg.results_path.open("w", newline="", encoding="utf-8") as result_file:
         writer = csv.DictWriter(result_file, fieldnames=RESULT_COLUMNS)
@@ -57,6 +78,7 @@ def run_alternating(
         )
         for seed_result in seed_records:
             records.extend(seed_result)
+    _compare_final_ghosts_to_baseline(cfg)
     print(f"Alternating experiment results: {cfg.results_path}")
     return records
 
@@ -126,6 +148,7 @@ def _run_seed(
             round_index=round_index,
             config=config,
         )
+        record["seed"] = seed
         record["ghost_catch_rate"] = _evaluate_ghost(
             ghost_path,
             pacman_path,
@@ -150,14 +173,14 @@ def _prepare_round_zero(
     models_dir: Path,
     logs_dir: Path,
 ) -> Path:
-    """Load the baseline Pac-Man model or train one if none is available."""
+    """Copy a compatible baseline Pac-Man model or train round zero."""
+    models_dir.mkdir(parents=True, exist_ok=True)
     output_path = models_dir / "round_00_pacman.zip"
     initial = config.initial_pacman_model_path
     if initial is not None and initial.exists():
         initial_observation_config = load_observation_config(initial)
         if initial_observation_config == ObservationConfig():
-            model = PPO.load(str(initial), device=TRAINING_DEVICE)
-            model.save(str(output_path.with_suffix("")))
+            shutil.copy2(initial, output_path)
             save_observation_config(output_path, initial_observation_config)
             return output_path
         print(
@@ -410,6 +433,81 @@ def _evaluate_ghost(
     return catches / config.evaluation_episodes
 
 
+def _compare_final_ghosts_to_baseline(config: AlternatingConfig) -> None:
+    """Compare each final learned ghost against baseline Pac-Man and rule ghosts."""
+    baseline_path = Path("models/best_model.zip")
+    if not baseline_path.is_file():
+        raise FileNotFoundError(
+            f"Cannot compare final ghosts without baseline model {baseline_path}."
+        )
+
+    comparison_seed = DEFAULT_SEED + 20_000
+    rule_evaluation = evaluate(
+        EvaluationConfig(
+            model_path=baseline_path,
+            n_episodes=config.evaluation_episodes,
+            max_steps=config.max_steps,
+            seed=comparison_seed,
+            verbose=False,
+            ghost_type="rule",
+        )
+    )
+    rule_catch_rate = (
+        sum(episode.caught for episode in rule_evaluation.episodes)
+        / config.evaluation_episodes
+    )
+    print(
+        "Baseline Pac-Man vs rule ghosts "
+        f"({config.evaluation_episodes} episodes): "
+        f"catch rate {rule_catch_rate:.1%}"
+    )
+
+    comparison_path = config.results_path.with_name(
+        "baseline_ghost_catch_rates.csv"
+    )
+    comparison_path.parent.mkdir(parents=True, exist_ok=True)
+    with comparison_path.open("w", newline="", encoding="utf-8") as output:
+        writer = csv.DictWriter(
+            output,
+            fieldnames=("seed", "ghost_type", "episodes", "catch_rate"),
+        )
+        writer.writeheader()
+        writer.writerow({
+            "seed": "baseline",
+            "ghost_type": "rule",
+            "episodes": config.evaluation_episodes,
+            "catch_rate": rule_catch_rate,
+        })
+        for seed in config.seeds:
+            ghost_path = (
+                config.models_dir
+                / f"seed_{seed}"
+                / f"round_{config.n_rounds:02d}_ghost.zip"
+            )
+            if not ghost_path.is_file():
+                raise FileNotFoundError(
+                    f"Missing final learned ghost checkpoint: {ghost_path}"
+                )
+            learned_catch_rate = _evaluate_ghost(
+                ghost_path,
+                baseline_path,
+                comparison_seed,
+                config,
+            )
+            writer.writerow({
+                "seed": seed,
+                "ghost_type": "learned",
+                "episodes": config.evaluation_episodes,
+                "catch_rate": learned_catch_rate,
+            })
+            print(
+                f"Baseline Pac-Man vs learned ghost seed {seed} "
+                f"({config.evaluation_episodes} episodes): "
+                f"catch rate {learned_catch_rate:.1%}"
+            )
+    print(f"Baseline ghost comparison: {comparison_path}")
+
+
 def _quick_config() -> AlternatingConfig:
     """Return a short, one-seed configuration for smoke testing."""
     return replace(
@@ -427,18 +525,36 @@ def _quick_config() -> AlternatingConfig:
     )
 
 
+def _medium_config() -> AlternatingConfig:
+    """Return the two-seed, three-round medium training budget."""
+    return replace(
+        AlternatingConfig(),
+        n_rounds=MEDIUM_ALTERNATING_ROUNDS,
+        pacman_steps_per_round=MEDIUM_ALTERNATING_STEPS_PER_ROUND,
+        ghost_steps_per_round=MEDIUM_GHOST_STEPS_PER_ROUND,
+        seeds=tuple(range(DEFAULT_SEED, DEFAULT_SEED + MEDIUM_SEEDS)),
+        initial_pacman_model_path=Path("models/best_model.zip"),
+        evaluation_episodes=30,
+        models_dir=Path("models/experiments/medium/alternating"),
+        logs_dir=Path("logs/experiments/medium/alternating"),
+        results_path=Path("results/medium/alternating_rounds.csv"),
+    )
+
+
 def main() -> None:
     """Run the CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--quick", action="store_true")
+    mode.add_argument("--medium", action="store_true")
     mode.add_argument("--full", action="store_true")
     args = parser.parse_args()
-    config = _quick_config() if args.quick else AlternatingConfig()
-    print(
-        f"Alternating training: {config.n_rounds} rounds, "
-        f"{len(config.seeds)} seed(s), CPU only."
-    )
+    if args.quick:
+        config = _quick_config()
+    elif args.medium:
+        config = _medium_config()
+    else:
+        config = AlternatingConfig()
     run_alternating(config)
 
 

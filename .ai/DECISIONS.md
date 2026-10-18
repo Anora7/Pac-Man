@@ -414,6 +414,53 @@ verification only.
 
 ---
 
+## Decision 011
+
+### Title
+
+Provide an Isolated Medium CPU Experiment Profile
+
+### Date
+
+2026-10-16
+
+### Status
+
+Accepted
+
+### Context
+
+The full experiment workflow takes too long for routine runs, while quick
+mode is only a smoke test. Experiments may also be launched simultaneously
+from separate terminals.
+
+### Alternatives Considered
+
+- Reduce the full-mode budgets globally
+- Add a bounded medium profile with separate outputs
+
+### Decision
+
+Keep full and quick settings unchanged. Add a two-seed medium profile for
+alternating training, curriculum, PPO-vs-DQN, and a four-variant ablation.
+Use separate medium model, log, result, and plot paths, print a CPU-time
+estimate before training, and limit PyTorch to one thread in each entry point.
+The runner's medium default selects only these four training workflows.
+
+### Rationale
+
+This provides a repeatable intermediate budget without changing prior
+experiments, and it allows different experiment types to run concurrently
+without sharing output files.
+
+### Consequences
+
+Medium runs are separate from full/quick artifacts and do not train into or
+replace `models/best_model.zip`. Estimated times are approximate and exclude
+evaluation overhead.
+
+---
+
 ## Future Decisions
 
 Record future decisions regarding:

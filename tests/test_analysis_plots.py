@@ -28,8 +28,15 @@ def test_heatmap_saves_file_and_masks_wall_cells(tmp_path: Path) -> None:
 def test_alternating_dashboard_reads_results_csv(tmp_path: Path) -> None:
     csv_path = tmp_path / "rounds.csv"
     csv_path.write_text(
-        "seed,round,pacman_success_rate,ghost_catch_rate\n"
-        "42,0,0.2,0.0\n42,1,0.3,0.4\n",
+        "\ufeffseed,round,pacman_success_rate,pacman_mean_pellets,ghost_catch_rate\n"
+        "42,0,0.0,3.0,0.0\n"
+        "42,1,0.0,5.0,0.4\n"
+        "42,2,0.0,6.0,0.5\n"
+        "42,3,0.0,7.0,0.6\n"
+        "43,0,0.0,4.0,0.0\n"
+        "43,1,0.0,6.0,0.5\n"
+        "43,2,0.0,7.0,0.6\n"
+        "43,3,0.0,8.0,0.7\n",
         encoding="utf-8",
     )
     output = plot_alternating_dashboard(

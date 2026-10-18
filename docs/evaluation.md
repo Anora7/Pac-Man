@@ -83,6 +83,9 @@ When a `.observation.json` sidecar exists next to a model, evaluation loads
 its observation settings automatically. Missing sidecars mean the baseline
 723-value observation; explicitly pass `observation_config` or `--obs-config`
 for models trained with optional features.
+When a seed is supplied, episode 1 uses that seed and each subsequent episode
+uses the next integer seed, so evaluation episodes have distinct reproducible
+environment seeds.
 
 Each `EpisodeResult` includes: `total_reward`, `steps`, `pellets_collected`, `total_pellets`, `cleared`, `caught`, `truncated`, `completion_fraction`.
 
