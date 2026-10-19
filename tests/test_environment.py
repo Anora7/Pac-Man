@@ -40,6 +40,7 @@ from config import (
     POWER_MODE_DURATION,
     REWARDS,
     ObservationConfig,
+    RewardConfig,
     Action,
 )
 from environment import PacmanEnvironment, _OBS_SIZE
@@ -68,6 +69,28 @@ _CLEARED_LAYOUT = [
     [0, 4, 1, 1, 1, 2, 0],   # spawn; pellets at (1,2-4); power pellet at (1,5)
     [0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 5, 0, 0, 0],   # ghost completely surrounded by walls
+    [0, 0, 0, 0, 0, 0, 0],
+]
+
+_PELLET_PATH_LAYOUT = [
+    [0, 0, 0, 0, 0, 0],
+    [0, 4, 1, 1, 2, 0],
+    [0, 0, 0, 0, 0, 0],
+    [0, 5, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+]
+_PELLET_PATH_OBS_SIZE = len(_PELLET_PATH_LAYOUT) * len(_PELLET_PATH_LAYOUT[0]) * 5 + 3
+_NEARBY_GHOST_LAYOUT = [
+    [0, 0, 0, 0, 0],
+    [0, 4, 1, 5, 0],
+    [0, 1, 1, 1, 0],
+    [0, 2, 1, 1, 0],
+    [0, 0, 0, 0, 0],
+]
+_DISTANT_GHOST_LAYOUT = [
+    [0, 0, 0, 0, 0, 0, 0],
+    [0, 4, 1, 1, 1, 5, 0],
+    [0, 1, 1, 1, 2, 0, 0],
     [0, 0, 0, 0, 0, 0, 0],
 ]
 
@@ -124,6 +147,28 @@ class TestCalculateStepReward:
         expected = REWARDS.STEP + REWARDS.PELLET + REWARDS.CLEAR_MAZE
         assert r == pytest.approx(expected)
 
+    def test_optional_endgame_shaping_rewards(self) -> None:
+        reward_config = RewardConfig(
+            PELLET_DISTANCE_DECREASE=0.5,
+            PELLET_DISTANCE_INCREASE=-0.5,
+            REVISIT_CELL=-0.1,
+        )
+        assert calculate_step_reward(
+            pellet_distance_decreased=True,
+            reward_config=reward_config,
+        ) == pytest.approx(-0.5)
+        assert calculate_step_reward(
+            pellet_distance_increased=True,
+            reward_config=reward_config,
+        ) == pytest.approx(-1.5)
+        assert calculate_step_reward(
+            revisited_cell=True,
+            reward_config=reward_config,
+        ) == pytest.approx(-1.1)
+        assert REWARDS.PELLET_DISTANCE_DECREASE == 0.0
+        assert REWARDS.PELLET_DISTANCE_INCREASE == 0.0
+        assert REWARDS.REVISIT_CELL == 0.0
+
 
 # ---------------------------------------------------------------------------
 # Environment — spaces and repr
@@ -162,6 +207,143 @@ class TestEnvironmentSpaces:
         obs, *_ = env.step(Action.LEFT)
         assert obs[-4:].tolist() == [0.0, 0.0, 1.0, 0.0]
         assert obs.shape == env.observation_space.shape
+        env.close()
+
+    def test_nearest_pellet_and_previous_action_observations(self) -> None:
+        env = PacmanEnvironment(
+            maze_layout=_PELLET_PATH_LAYOUT,
+            observation_config=ObservationConfig(
+                include_nearest_pellet=True,
+                include_previous_action=True,
+            ),
+        )
+        observation, _ = env.reset(seed=42)
+        assert env.observation_space.shape == (_PELLET_PATH_OBS_SIZE + 9,)
+        assert observation[
+            _PELLET_PATH_OBS_SIZE:_PELLET_PATH_OBS_SIZE + 5
+        ].tolist() == pytest.approx(
+            [0.0, 0.0, 0.0, 1.0, 1.0 / 29.0]
+        )
+        assert observation[-4:].tolist() == [0.0, 0.0, 0.0, 0.0]
+
+        observation, *_ = env.step(Action.RIGHT)
+        assert observation[-4:].tolist() == [0.0, 0.0, 0.0, 1.0]
+        assert observation.shape == env.observation_space.shape
+        env.close()
+
+    def test_distance_shaping_rewards_progress_and_regression(self) -> None:
+        reward_config = RewardConfig(
+            PELLET_DISTANCE_DECREASE=0.5,
+            PELLET_DISTANCE_INCREASE=-0.5,
+        )
+        env = PacmanEnvironment(
+            maze_layout=_PELLET_PATH_LAYOUT,
+            reward_config=reward_config,
+        )
+        env.reset(seed=42)
+        _, reward, *_ = env.step(Action.RIGHT)
+        assert reward == pytest.approx(9.5)
+        _, reward, *_ = env.step(Action.LEFT)
+        assert reward == pytest.approx(-1.5)
+        env.close()
+
+    def test_revisiting_recent_cell_adds_configured_penalty(self) -> None:
+        env = PacmanEnvironment(
+            maze_layout=_PELLET_PATH_LAYOUT,
+            reward_config=RewardConfig(REVISIT_CELL=-0.1),
+        )
+        env.reset(seed=42)
+        env.step(Action.RIGHT)
+        env.step(Action.LEFT)
+        _, reward, *_ = env.step(Action.RIGHT)
+        assert reward == pytest.approx(-1.1)
+        env.close()
+
+    def test_nearest_ghost_features_include_escape_direction_distance_and_last_move(
+        self,
+    ) -> None:
+        base_size = len(_NEARBY_GHOST_LAYOUT) * len(_NEARBY_GHOST_LAYOUT[0]) * 5 + 3
+        env = PacmanEnvironment(
+            maze_layout=_NEARBY_GHOST_LAYOUT,
+            observation_config=ObservationConfig(include_nearest_ghost=True),
+        )
+        observation, _ = env.reset(seed=42)
+        assert env.observation_space.shape == (base_size + 9,)
+        assert observation[base_size:].tolist() == pytest.approx(
+            [0.0, 1.0, 0.0, 0.0, 2.0 / 24.0, 0.0, 0.0, 0.0, 0.0]
+        )
+
+        observation, *_ = env.step(
+            Action.DOWN,
+            ghost_actions=[Action.LEFT],
+        )
+        assert observation[base_size + 7] == 1.0
+        assert np.count_nonzero(observation[base_size + 5:base_size + 9]) == 1
+
+        observation, *_ = env.step(
+            Action.RIGHT,
+            ghost_actions=[Action.UP],
+        )
+        assert env.ghosts[0].last_action is not None
+        assert observation[
+            base_size + 5 + env.ghosts[0].last_action
+        ] == 1.0
+        env.close()
+
+    def test_nearest_ghost_features_are_zero_without_hostile_ghosts(self) -> None:
+        base_size = len(_NEARBY_GHOST_LAYOUT) * len(_NEARBY_GHOST_LAYOUT[0]) * 5 + 3
+        env = PacmanEnvironment(
+            maze_layout=_NEARBY_GHOST_LAYOUT,
+            observation_config=ObservationConfig(include_nearest_ghost=True),
+        )
+        env.reset(seed=42)
+        env.ghosts[0].make_vulnerable()
+
+        observation = env._build_observation()
+
+        assert np.all(observation[base_size:] == 0.0)
+        env.close()
+
+    def test_ghost_proximity_penalty_only_applies_when_distance_shrinks_nearby(
+        self,
+    ) -> None:
+        reward_config = RewardConfig(GHOST_DISTANCE_DECREASE=-0.5)
+        env = PacmanEnvironment(
+            maze_layout=_NEARBY_GHOST_LAYOUT,
+            reward_config=reward_config,
+        )
+        env.reset(seed=42)
+        _, reward, *_ = env.step(
+            Action.RIGHT,
+            ghost_actions=[Action.DOWN],
+        )
+        assert reward == pytest.approx(8.5)
+        env.close()
+
+        distant_env = PacmanEnvironment(
+            maze_layout=_DISTANT_GHOST_LAYOUT,
+            reward_config=reward_config,
+        )
+        distant_env.reset(seed=42)
+        _, reward, *_ = distant_env.step(
+            Action.DOWN,
+            ghost_actions=[Action.LEFT],
+        )
+        assert reward == pytest.approx(9.0)
+        distant_env.close()
+
+    def test_ghost_proximity_penalty_triggers_at_three_steps(self) -> None:
+        env = PacmanEnvironment(
+            maze_layout=_DISTANT_GHOST_LAYOUT,
+            reward_config=RewardConfig(GHOST_DISTANCE_DECREASE=-0.5),
+        )
+        env.reset(seed=42)
+        # The ghost begins four steps away; moving right brings it within three.
+        _, reward, *_ = env.step(
+            Action.RIGHT,
+            ghost_actions=[Action.DOWN],
+        )
+        assert reward == pytest.approx(8.5)
         env.close()
 
     def test_observation_space_dtype(self) -> None:

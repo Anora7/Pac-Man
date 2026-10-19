@@ -19,6 +19,9 @@ def test_save_and_load_optional_observation_configuration(tmp_path: Path) -> Non
     expected = ObservationConfig(
         include_ghost_direction=True,
         include_previous_pacman_action=True,
+        include_nearest_pellet=True,
+        include_previous_action=True,
+        include_nearest_ghost=True,
     )
 
     metadata_path = save_observation_config(model_path, expected)
@@ -37,3 +40,33 @@ def test_invalid_metadata_raises_clear_error(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Invalid observation metadata"):
         load_observation_config(model_path)
+
+
+def test_load_legacy_observation_metadata(tmp_path: Path) -> None:
+    model_path = tmp_path / "legacy.zip"
+    observation_metadata_path(model_path).write_text(
+        '{"include_ghost_direction": true, '
+        '"include_previous_pacman_action": true}',
+        encoding="utf-8",
+    )
+
+    assert load_observation_config(model_path) == ObservationConfig(
+        include_ghost_direction=True,
+        include_previous_pacman_action=True,
+    )
+
+
+def test_load_intermediate_observation_metadata(tmp_path: Path) -> None:
+    model_path = tmp_path / "intermediate.zip"
+    observation_metadata_path(model_path).write_text(
+        '{"include_ghost_direction": false, '
+        '"include_previous_pacman_action": false, '
+        '"include_nearest_pellet": true, '
+        '"include_previous_action": true}',
+        encoding="utf-8",
+    )
+
+    assert load_observation_config(model_path) == ObservationConfig(
+        include_nearest_pellet=True,
+        include_previous_action=True,
+    )

@@ -15,8 +15,8 @@ Central constants. No imports from other project modules.
 | `ACTION_DELTAS` | `dict[Action, tuple[int,int]]` | Row/col delta for each action |
 | `MAZE_HEIGHT`, `MAZE_WIDTH` | `int` | Grid dimensions (12×12) |
 | `MAZE_LAYOUT` | `list[list[int]]` | Default 12×12 maze |
-| `RewardConfig` | frozen dataclass | Reward values (`PELLET`, `POWER_PELLET`, `EAT_GHOST`, `CLEAR_MAZE`, `CAUGHT_BY_GHOST`, `HIT_WALL`, `STEP`) |
-| `ObservationConfig` | frozen dataclass | Optional observation features; both default off |
+| `RewardConfig` | frozen dataclass | Base rewards plus disabled-by-default nearest-pellet progress, revisit, and ghost-proximity shaping |
+| `ObservationConfig` | frozen dataclass | Optional ghost-direction, nearest-pellet, nearest-ghost, and previous-action features; all default off |
 | `GhostRewardConfig` | frozen dataclass | Reward values for ghost-side training |
 | `MultiSeedConfig` | frozen dataclass | Reproducible seed list and confidence level |
 | `DQNConfig` | frozen dataclass | CPU DQN replay, exploration, and target-network settings |
@@ -48,6 +48,7 @@ Immutable `NamedTuple`. Supports `pos + delta` arithmetic.
 | `has_power_pellet(pos)` | `bool` | Power pellet present at pos |
 | `consume_pellet(pos)` | `CellType \| None` | Eat pellet; returns type consumed or None |
 | `pellets_remaining()` | `int` | Count of unconsumed pellets |
+| `nearest_pellet_path(start)` | `(int \| None, int \| None)` | First action and BFS distance to the nearest reachable pellet |
 | `is_cleared()` | `bool` | True when all pellets consumed |
 | `pacman_spawn()` | `Position` | Pac-Man's starting cell |
 | `ghost_spawns()` | `list[Position]` | All ghost starting cells |
@@ -81,8 +82,9 @@ Immutable `NamedTuple`. Supports `pos + delta` arithmetic.
 
 `GhostPolicy` defines an interchangeable action-selection interface. Built-in
 policies are `RandomGhostPolicy`, `ChaseGhostPolicy`, `RuleBasedGhostPolicy`,
-and `LearnedGhostPolicy`. A learned policy requires an explicit ghost-model
-observation; blocked actions are handled safely by `Ghost.move()`.
+`LearnedGhostPolicy`, and `SharedLearnedGhostController`. Learned policies
+require an explicit ghost-model observation; wall-directed learned actions
+fall back to a random legal neighboring cell.
 
 ---
 
@@ -90,8 +92,11 @@ observation; blocked actions are handled safely by `Ghost.move()`.
 
 `GhostPolicy` defines an interchangeable action-selection interface. Built-in
 policies are `RandomGhostPolicy`, `ChaseGhostPolicy`, `RuleBasedGhostPolicy`,
-and `LearnedGhostPolicy`. A learned policy requires an explicit ghost-model
-observation; blocked actions are handled safely by `Ghost.move()`.
+`LearnedGhostPolicy`, and `SharedLearnedGhostController`. Learned policies
+require an explicit ghost-model observation; wall-directed actions fall back
+to a random legal neighboring cell. Evaluation matches shared training by
+alternating one PPO-controlled ghost per step and choosing its action from
+the pre-Pac-Man-move observation.
 
 ## rewards.py
 
@@ -103,8 +108,8 @@ Keyword-only arguments: `hit_wall`, `pellet_eaten`, `power_pellet_eaten`, `ghost
 
 `GhostEnvironment` is an optional Gymnasium environment for ghost-side
 training. Shared mode cycles the same PPO policy across per-ghost-centred
-observations; single-ghost mode leaves the other ghosts on their configured
-policies.
+observations and falls back to a random legal action when PPO selects a wall;
+single-ghost mode leaves the other ghosts on their configured policies.
 
 ## train_alternating.py
 
@@ -119,6 +124,9 @@ and round metrics are stored under the matching experiment directories.
 available extension models against random, chase, rule-based, personality,
 and (when available) learned ghosts. It writes `results/robustness_matrix.csv`
 and annotated heatmaps under `plots/experiments/`.
+The opt-in `--endgame` CLI profile limits evaluation to the baseline, the 1M
+demo model, and a selected 300k features-shaping model (30 episodes against
+each of five ghost policies).
 
 ## observation_metadata.py
 
@@ -140,7 +148,10 @@ Provides Pac-Man/ghost visitation and catch heatmaps, PPO value-function
 danger maps, learning curves, alternating co-evolution dashboard,
 per-episode outcome bars, and optional PNG frame capture. The smoothed
 training chart reads the `is_success` field from Monitor logs; use current
-training scripts to generate this field.
+training scripts to generate this field. Its `--endgame` profile adds a
+deterministic, seed-level comparison chart from saved endgame CSVs and
+generates visitation, caught-cell, and critic-value diagnostics for the 1M
+demo model without retraining.
 
 ---
 
@@ -161,7 +172,7 @@ Inherits `gymnasium.Env`. Implements `reset()`, `step()`, `render()`, `close()`.
 
 Frozen dataclass: `maze`, `pacman_position`, `ghost_positions`, `ghost_vulnerable`, `score`, `step`, `power_mode_active`, `power_mode_steps_remaining`, `episode`.
 
-### `PacmanRenderer(cell_size=40, fps=8, render_mode="human")`
+### `PacmanRenderer(cell_size=40, fps=4, render_mode="human")`
 
 | Method | Description |
 |---|---|

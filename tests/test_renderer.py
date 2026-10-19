@@ -152,6 +152,7 @@ class TestRendererConfig:
 
     def test_default_fps(self) -> None:
         r = PacmanRenderer()
+        assert r.fps == 4
         assert r.fps == FPS
 
     def test_default_render_mode(self) -> None:

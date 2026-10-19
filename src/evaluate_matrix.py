@@ -132,10 +132,11 @@ def latest_ghost_model(
 
 def run_evaluation_matrix(
     config: RobustnessConfig | None = None,
+    model_entries: list[ModelEntry] | None = None,
 ) -> list[dict[str, str | float]]:
     """Evaluate available models and save CSV plus annotated heatmaps."""
     cfg = config or RobustnessConfig()
-    models = discover_models(
+    models = model_entries or discover_models(
         cfg.models_dir,
         cfg.experiment_models_dir,
         cfg.additional_experiment_models_dirs,
@@ -361,6 +362,41 @@ def _priority_config() -> RobustnessConfig:
     )
 
 
+def _endgame_config() -> RobustnessConfig:
+    """Use the compact endgame model set and its priority output locations."""
+    return replace(
+        RobustnessConfig(),
+        experiment_models_dir=Path("models/experiments/priority_300k"),
+        episodes=30,
+        results_path=Path("results/priority_300k/endgame_robustness_matrix.csv"),
+        plot_path=Path(
+            "plots/experiments/priority_300k/endgame_robustness_matrix.png"
+        ),
+    )
+
+
+def _endgame_models(models_dir: Path) -> list[ModelEntry]:
+    """Return only baseline and the two requested features-shaping finals."""
+    endgame_dir = models_dir / "experiments" / "endgame_300k"
+    return [
+        ModelEntry("baseline", models_dir / "best_model.zip"),
+        ModelEntry(
+            "features_shaping_1M_seed_42",
+            endgame_dir
+            / "round2_seed_42_steps_1000000"
+            / "features_shaping"
+            / "final_model.zip",
+        ),
+        ModelEntry(
+            "features_shaping_300k_seed_44",
+            endgame_dir
+            / "round2_seed_44_steps_300000"
+            / "features_shaping"
+            / "final_model.zip",
+        ),
+    ]
+
+
 def main() -> None:
     """Run the command-line robustness evaluation."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -368,15 +404,20 @@ def main() -> None:
     mode.add_argument("--quick", action="store_true")
     mode.add_argument("--medium", action="store_true")
     mode.add_argument("--priority", action="store_true")
+    mode.add_argument(
+        "--endgame",
+        action="store_true",
+        help="Evaluate the baseline and two selected endgame models only.",
+    )
     mode.add_argument("--full", action="store_true")
     parser.add_argument(
         "--episodes",
         type=int,
-        default=10,
+        default=None,
         help="Override the number of evaluation episodes per model/ghost cell.",
     )
     args = parser.parse_args()
-    if args.episodes < 1:
+    if args.episodes is not None and args.episodes < 1:
         parser.error("--episodes must be at least 1.")
     config = (
         _quick_config()
@@ -385,10 +426,21 @@ def main() -> None:
         if args.medium
         else _priority_config()
         if args.priority
+        else _endgame_config()
+        if args.endgame
         else RobustnessConfig()
     )
-    config = replace(config, episodes=args.episodes)
-    run_evaluation_matrix(config)
+    if args.episodes is not None:
+        config = replace(config, episodes=args.episodes)
+    selected_models = _endgame_models(config.models_dir) if args.endgame else None
+    if selected_models is not None:
+        missing = [entry.path for entry in selected_models if not entry.path.is_file()]
+        if missing:
+            raise FileNotFoundError(
+                "Missing required endgame model(s): "
+                + ", ".join(str(path) for path in missing)
+            )
+    run_evaluation_matrix(config, selected_models)
 
 
 if __name__ == "__main__":

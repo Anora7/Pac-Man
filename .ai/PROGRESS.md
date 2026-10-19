@@ -177,7 +177,8 @@ All 13 steps of the opt-in extension plan are complete. The baseline
 remain the defaults. The high-budget demo refresh is complete: ghost-direction
 PPO and PPO/DQN comparison runs finished; four-round alternating runs finished
 for seeds 42, 43, and 44; the final-only matrix and priority dashboard were
-regenerated; and the full test suite passed (515 tests).
+regenerated. That refresh passed 540 tests; after endgame matrix and
+diagnostic-plot coverage was added, the full suite passes 542 tests.
 
 The medium-results refresh is complete. PPO-vs-DQN and reward ablation were
 re-evaluated from saved models over 30 episodes per model with distinct episode
@@ -192,9 +193,20 @@ per cell), and medium analysis plots were regenerated.
 
 # Upcoming Milestones
 
-No priority-refresh milestones remain in progress. The final robustness
-matrix contains 19 uniquely labeled models × five ghost policies, with 30
-episodes per cell. No evaluated game cleared the maze.
+The latest implementation adds opt-in nearest-ghost awareness and a
+close-range distance-decrease penalty to the new `features_shaping_ghost`
+endgame variant. Saved endgame results have now been compared without
+retraining: `features_shaping` averaged 52.93 pellets and 11.67 clears per
+30-game seed run; `features_shaping_ghost` averaged 52.60 pellets and 11.33
+clears. The demo model was evaluated in a curated 15-cell matrix (three
+Pac-Man models × five ghost policies, 30 games per cell), and its visitation,
+caught-location, and critic-value maps were generated. Baseline model hash
+remains unchanged. The learned-ghost column used an incorrect wall-stalling
+and all-ghost PPO protocol. Evaluation now matches shared-training turn order
+and pre-step observation timing, with legal-move fallback. Corrected
+30-episode catch rates were 0.0%, 23.3%, and 66.7% for learned seeds 42, 43,
+and 44 (rule-based: 56.7%). The earlier matrix learned column is stale and
+should be regenerated before use.
 
 ---
 
@@ -218,6 +230,11 @@ Current known risks:
 | 2026-10-19 | Run four-round 100k-per-side alternating experiments for seeds 42–44 | ✅ |
 | 2026-10-19 | Evaluate 19 final models against five policies for 30 episodes per cell | ✅ |
 | 2026-10-19 | Regenerate priority dashboard and verify baseline hash/full test suite | ✅ |
+| 2026-10-19 | Add opt-in endgame navigation features, shaping, runner, and tests | ✅ |
+| 2026-10-19 | Add nearest-hostile-ghost awareness and proximity shaping variant | ✅ |
+| 2026-10-20 | Evaluate selected endgame models and generate comparison/diagnostic plots | ✅ |
+| 2026-10-19 | Slow default Pygame playback to 4 FPS for easier viewing | ✅ |
+| 2026-10-19 | Fix learned-ghost evaluation wall stalls and align it to shared training | ✅ |
 | 2026-10-18 | Refresh medium evaluations, alternating training, robustness matrix, and analysis plots | ✅ |
 | 2026-10-18 | Restrict robustness matrix to final medium checkpoints and add progress output | ✅ |
 | 2026-10-16 | Add isolated medium CPU budgets for experiment workflows | ✅ |
@@ -228,9 +245,8 @@ Current known risks:
 
 # Next Immediate Task
 
-Copy the requested deliverables from `models/experiments/`,
-`results/priority_300k/`, and `plots/experiments/priority_300k/` to a safe
-location because those generated outputs are gitignored.
+Use the 1M-step features-shaping model for the demonstration; preserve the
+existing baseline and avoid retraining unless a new experiment is requested.
 
 ---
 

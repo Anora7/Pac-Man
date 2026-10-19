@@ -118,6 +118,10 @@ class RewardConfig:
     CAUGHT_BY_GHOST: float = -200.0
     HIT_WALL: float = -5.0
     STEP: float = -1.0
+    PELLET_DISTANCE_DECREASE: float = 0.0
+    PELLET_DISTANCE_INCREASE: float = 0.0
+    REVISIT_CELL: float = 0.0
+    GHOST_DISTANCE_DECREASE: float = 0.0
 
 
 REWARDS: RewardConfig = RewardConfig()
@@ -146,12 +150,19 @@ class ObservationConfig:
 
     include_ghost_direction: bool = False
     include_previous_pacman_action: bool = False
+    include_nearest_pellet: bool = False
+    include_previous_action: bool = False
+    include_nearest_ghost: bool = False
 
 
 OBSERVATION_CONFIG: ObservationConfig = ObservationConfig()
 GHOST_DIRECTION_FEATURES: int = 4
 GHOST_OBSERVATION_FEATURES: int = GHOST_DIRECTION_FEATURES + 1
 PACMAN_ACTION_FEATURES: int = 4
+NEAREST_PELLET_DIRECTION_FEATURES: int = 4
+NEAREST_PELLET_FEATURES: int = NEAREST_PELLET_DIRECTION_FEATURES + 1
+NEAREST_GHOST_FEATURES: int = 9
+GHOST_PROXIMITY_DISTANCE: int = 3
 
 
 @dataclass(frozen=True)
@@ -428,7 +439,7 @@ class AnalysisPlotConfig:
 # ---------------------------------------------------------------------------
 
 CELL_SIZE: int = 40   # pixels per grid cell
-FPS: int = 8          # frames per second during visual playback
+FPS: int = 4          # frames per second during visual playback
 
 # RGB colour constants
 COLOR_BACKGROUND: tuple[int, int, int] = (0, 0, 0)

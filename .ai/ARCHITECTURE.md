@@ -73,6 +73,7 @@ It intentionally avoids implementation-specific details.
 - Pellet locations
 - Power pellet
 - Spawn locations
+- Shortest-path queries through walkable cells
 
 ### Must NOT
 
@@ -113,7 +114,10 @@ It intentionally avoids implementation-specific details.
 Owns interchangeable ghost action-selection policies. The baseline
 rule-based policy remains the default. Learned-policy inference is isolated
 here and receives an explicit observation from its caller; the ghost entity
-and game environment do not train models.
+and game environment do not train models. Learned evaluation cycles PPO
+control over one ghost per step and selects actions from the pre-Pac-Man-move
+state, matching shared ghost training; illegal model-directed moves use a
+random legal-neighbor fallback.
 
 ## ghost_observations.py
 
@@ -151,6 +155,14 @@ observation metadata, training output paths, and paired baseline evaluation.
 It uses the shared PPO trainer and evaluator; it does not change defaults or
 write to the baseline archive.
 
+## train_endgame_variants.py
+
+Owns isolated PPO runs comparing nearest-pellet/action observations and
+nearest-pellet/revisit reward shaping, with a nearest-ghost observation and
+proximity-penalty variant. It uses separate model, log, and result paths per
+seed/step/tag/variant, then evaluates with the shared evaluator. Trajectory
+recording is opt-in in `evaluate.py` and is used to measure tight loops.
+
 ## run_priority_experiments.py
 
 Owns process-level orchestration for the 300k comparison and multi-seed
@@ -163,7 +175,15 @@ Owns final-checkpoint discovery, algorithm-aware PPO/DQN model loading,
 policy/model evaluation, CSV output, and robustness heatmaps. The priority
 profile evaluates selected final models in separate CPU worker processes,
 excludes intermediate checkpoints, and qualifies labels with their experiment
-source to keep matrix rows unique.
+source to keep matrix rows unique. The opt-in `--endgame` profile evaluates
+only the baseline, the 1M-step endgame demo model, and one 300k
+features-shaping model against five ghost policies.
+
+## analysis_plots.py
+
+Owns the endgame seed-comparison chart and diagnostic visitation, caught-cell,
+and critic-value maps. The `--endgame` profile reads existing result CSVs and
+model observation sidecars; it does not train or change models.
 
 ---
 

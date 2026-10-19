@@ -1,0 +1,5 @@
+variant,model,policy,episodes,mean_pellets,mean_steps,clears,loop_rate
+shaping_only,baseline,deterministic,30,44.166666666666664,67.06666666666666,0,0.0
+shaping_only,trained,deterministic,30,52.93333333333333,146.83333333333334,0,0.26666666666666666
+shaping_only,baseline,stochastic,30,43.733333333333334,77.36666666666666,0,0.0
+shaping_only,trained,stochastic,30,48.63333333333333,84.0,0,0.0

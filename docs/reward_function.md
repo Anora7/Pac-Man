@@ -41,6 +41,21 @@ evaluation.
 The `rewards.py` module computes the appropriate reward for each environment
 event from the selected `RewardConfig`.
 
+Three optional endgame terms are also defined in `RewardConfig`, all with
+zero defaults: `PELLET_DISTANCE_DECREASE`, `PELLET_DISTANCE_INCREASE`, and
+`REVISIT_CELL`. When enabled, the environment compares shortest BFS distance
+to a remaining pellet before and after movement, then applies the configured
+signed value for a decrease or increase. A revisit is a move into one of the
+last ten recorded movement positions; wall bumps do not count as revisits.
+The endgame experiment uses +0.5, -0.5, and -0.1 respectively. These terms
+do not affect baseline training or `models/best_model.zip`.
+
+`GHOST_DISTANCE_DECREASE` is another zero-default opt-in term. When enabled,
+the environment applies it if Pac-Man's move reduces the shortest-path
+distance to a non-vulnerable ghost and leaves the nearest such ghost within
+three maze steps. The `features_shaping_ghost` experiment sets this penalty
+to -0.5; it does not affect the existing variants or baseline.
+
 ---
 
 ## Notes

@@ -12,6 +12,8 @@ from evaluate_matrix import (
     discover_models,
     latest_ghost_model,
     _medium_config,
+    _endgame_config,
+    _endgame_models,
 )
 
 
@@ -109,6 +111,30 @@ def test_medium_config_uses_isolated_paths_and_ten_episodes() -> None:
     assert config.episodes == 10
     assert config.results_path == Path("results/medium/robustness_matrix.csv")
     assert config.plot_path == Path("plots/experiments/medium/robustness_matrix.png")
+
+
+def test_endgame_matrix_uses_only_requested_final_models() -> None:
+    config = _endgame_config()
+    models = _endgame_models(Path("models"))
+    assert config.episodes == 30
+    assert config.experiment_models_dir == Path("models/experiments/priority_300k")
+    assert config.results_path == Path(
+        "results/priority_300k/endgame_robustness_matrix.csv"
+    )
+    assert [model.name for model in models] == [
+        "baseline",
+        "features_shaping_1M_seed_42",
+        "features_shaping_300k_seed_44",
+    ]
+    assert models[0].path == Path("models/best_model.zip")
+    assert models[1].path == Path(
+        "models/experiments/endgame_300k/round2_seed_42_steps_1000000/"
+        "features_shaping/final_model.zip"
+    )
+    assert models[2].path == Path(
+        "models/experiments/endgame_300k/round2_seed_44_steps_300000/"
+        "features_shaping/final_model.zip"
+    )
 
 
 def test_matrix_writes_csv_and_annotated_plot(tmp_path: Path) -> None:

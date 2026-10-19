@@ -23,7 +23,7 @@ env.close()
 | `render_mode` | `str \| None` | `None` | `"human"` opens a Pygame window; `None` for headless training |
 | `max_steps` | `int` | `1000` | Maximum steps per episode before truncation |
 | `maze_layout` | `list[list[int]] \| None` | `None` | Custom grid layout; `None` uses the default 12×12 maze |
-| `render_fps` | `int` | `8` | Target Pygame playback speed |
+| `render_fps` | `int` | `4` | Target Pygame playback speed |
 | `reward_config` | `RewardConfig` | `REWARDS` | Reward variant; the baseline remains the default |
 | `ghost_count` | `int \| None` | `None` (two in the default maze) | Select ghost spawns; `None` uses all layout spawns |
 
@@ -51,16 +51,32 @@ All values are guaranteed to be in [0.0, 1.0].
 ### Optional observation features
 
 `PacmanEnvironment(observation_config=ObservationConfig(...))` can append
-ghost movement directions and/or the previous Pac-Man action. Both flags are
-disabled by default. With `include_ghost_direction=True`, five values are
-added per ghost (four direction one-hot values and a vulnerability flag).
-`include_previous_pacman_action=True` adds four action one-hot values (zeros
-before the first action). The resulting size is:
+ghost movement directions, nearest-pellet path information, nearest-hostile-
+ghost path information, and/or the previous Pac-Man action. All flags are
+disabled by default. With
+`include_ghost_direction=True`, five values are added per ghost (four
+direction one-hot values and a vulnerability flag).
+`include_nearest_pellet=True` adds four values for the first action on a
+shortest BFS path to the nearest remaining pellet and one path-distance value
+normalized by the number of maze cells minus one. If no pellet is reachable,
+these five values are zero.
+`include_previous_action=True` adds four action one-hot values (zeros before
+the first action). The older `include_previous_pacman_action` name remains a
+supported alias.
+`include_nearest_ghost=True` adds nine values: four one-hot values for a
+walkable first step that increases BFS distance from the nearest reachable
+non-vulnerable ghost, normalized shortest-path distance to that ghost, and
+four one-hot values for that ghost's last move direction. If there is no
+reachable non-vulnerable ghost, all nine values are zero; the last-move
+values are zero before that ghost has moved.
 
-`H × W × 5 + 3 + (ghost count × 5, when enabled) + (4, when enabled)`.
+The resulting size is:
 
-For the default 12×12, two-ghost maze, enabling both flags produces 737
-values. The original model-compatible shape remains 723 when both are off.
+`H × W × 5 + 3 + (ghost count × 5, for ghost direction) + 5 (nearest pellet, when enabled) + 9 (nearest ghost, when enabled) + 4 (previous action, when enabled)`.
+
+For the default 12×12, two-ghost maze, enabling ghost direction and previous
+action produces 737 values. The nearest-pellet feature adds five more. The
+original model-compatible shape remains 723 when all flags are off.
 
 ---
 

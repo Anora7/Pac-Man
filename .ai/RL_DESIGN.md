@@ -49,9 +49,15 @@ If a CNN-based observation is later justified by experimental evidence, this dec
 Alternative representations may be evaluated if justified.
 
 Optional, disabled-by-default observation features append the last movement
-direction and vulnerability status of each ghost, and/or the previous
-Pac-Man action. The baseline remains 723 values; when both optional features
-are enabled on the default two-ghost maze the vector is 737 values. Models
+direction and vulnerability status of each ghost, a previous-action one-hot,
+and/or the direction and normalized BFS distance to the nearest remaining
+pellet, and/or an escape direction, normalized BFS distance, and last move
+direction for the nearest reachable non-vulnerable ghost. The existing
+`include_previous_pacman_action` flag remains supported as a compatibility
+alias for `include_previous_action`. The nearest-pellet feature adds four
+direction values and one normalized path-distance value; the nearest-ghost
+feature adds four escape-direction values, one normalized distance value,
+and four last-move-direction values. The baseline remains 723 values; models
 must be evaluated with the same observation configuration used for training.
 
 ---
@@ -90,6 +96,17 @@ The baseline values remain the default. The optional reward ablation runner
 passes explicit `RewardConfig` variants through both training and evaluation;
 reward totals across variants use different scales and must be interpreted
 alongside success rate, pellets collected, and survival steps.
+
+Optional endgame shaping is disabled by default. Its configurable terms add a
+bonus when BFS distance to a remaining pellet decreases, a penalty when that
+distance increases, and a penalty when Pac-Man revisits one of its last ten
+visited cells. The endgame experiment uses +0.5, -0.5, and -0.1 respectively;
+the default reward function and baseline model remain unchanged.
+
+`GHOST_DISTANCE_DECREASE` is a separate zero-default term. It applies when
+Pac-Man's move reduces BFS distance to a non-vulnerable ghost and leaves the
+nearest such ghost within three steps. The `features_shaping_ghost` arm uses
+a -0.5 penalty.
 
 ---
 

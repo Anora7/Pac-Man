@@ -11,6 +11,7 @@ import analysis_plots
 from analysis_plots import (
     _save_heatmap,
     plot_alternating_dashboard,
+    plot_endgame_variant_comparison,
     plot_outcome_breakdown,
     plot_smoothed_training_curves,
 )
@@ -89,3 +90,57 @@ def test_smoothed_training_curves_use_monitor_success_field(tmp_path: Path) -> N
         ),
     )
     assert output.exists()
+
+
+def test_endgame_comparison_uses_deterministic_rows_and_seed_error_bars(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def write_csv(path: Path, variant: str, trained_pellets: float, clears: int) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "variant,model,policy,episodes,mean_pellets,mean_steps,clears,loop_rate\n"
+            f"{variant},baseline,deterministic,30,44.0,80.0,0,0.0\n"
+            f"{variant},trained,deterministic,30,{trained_pellets},70.0,{clears},0.0\n"
+            f"{variant},trained,stochastic,30,99.0,70.0,30,0.0\n",
+            encoding="utf-8",
+        )
+        return path
+
+    figures = []
+    monkeypatch.setattr(
+        analysis_plots.plt,
+        "close",
+        lambda figure: figures.append(figure),
+    )
+    feature_csvs = tuple(
+        write_csv(tmp_path / f"feature_{seed}.csv", "features_shaping", 50 + seed, seed)
+        for seed in range(3)
+    )
+    ghost_csvs = tuple(
+        write_csv(
+            tmp_path / f"ghost_{seed}.csv",
+            "features_shaping_ghost",
+            40 + seed,
+            seed + 1,
+        )
+        for seed in range(3)
+    )
+    output = plot_endgame_variant_comparison(
+        feature_csvs,
+        ghost_csvs,
+        tmp_path / "plots" / "comparison.png",
+    )
+    assert output.exists()
+    assert output.stat().st_size > 0
+    figure = figures[0]
+    bar_values = [
+        [
+            container.datavalues.tolist()
+            for container in axis.containers
+            if hasattr(container, "datavalues")
+        ][0]
+        for axis in figure.axes
+    ]
+    assert bar_values == [[0.0, 1.0, 2.0], [44.0, 51.0, 41.0]]
+    plt.close(figure)

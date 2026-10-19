@@ -20,6 +20,10 @@ def calculate_step_reward(
     ghosts_eaten: int = 0,
     caught: bool = False,
     cleared: bool = False,
+    pellet_distance_decreased: bool = False,
+    pellet_distance_increased: bool = False,
+    revisited_cell: bool = False,
+    ghost_distance_decreased: bool = False,
     reward_config: RewardConfig = REWARDS,
 ) -> float:
     """Calculate the total scalar reward for one environment step.
@@ -65,5 +69,17 @@ def calculate_step_reward(
 
     if cleared:
         reward += reward_config.CLEAR_MAZE
+
+    if pellet_distance_decreased:
+        reward += reward_config.PELLET_DISTANCE_DECREASE
+
+    if pellet_distance_increased:
+        reward += reward_config.PELLET_DISTANCE_INCREASE
+
+    if revisited_cell:
+        reward += reward_config.REVISIT_CELL
+
+    if ghost_distance_decreased:
+        reward += reward_config.GHOST_DISTANCE_DECREASE
 
     return reward

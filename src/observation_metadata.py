@@ -25,6 +25,9 @@ def save_observation_config(
             {
                 "include_ghost_direction": observation_config.include_ghost_direction,
                 "include_previous_pacman_action": observation_config.include_previous_pacman_action,
+                "include_nearest_pellet": observation_config.include_nearest_pellet,
+                "include_previous_action": observation_config.include_previous_action,
+                "include_nearest_ghost": observation_config.include_nearest_ghost,
             },
             indent=2,
         )
@@ -47,10 +50,22 @@ def load_observation_config(model_path: Path) -> ObservationConfig:
         ) from error
     if not isinstance(values, dict):
         raise ValueError(f"Observation metadata must be a JSON object: {metadata_path}")
-    expected = {
+    legacy_keys = {
         "include_ghost_direction",
         "include_previous_pacman_action",
     }
+    current_keys = legacy_keys | {
+        "include_nearest_pellet",
+        "include_previous_action",
+    }
+    extended_keys = current_keys | {"include_nearest_ghost"}
+    expected = (
+        extended_keys
+        if set(values) == extended_keys
+        else current_keys
+        if set(values) == current_keys
+        else legacy_keys
+    )
     if set(values) != expected or any(
         not isinstance(values[key], bool) for key in expected
     ):

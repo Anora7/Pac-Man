@@ -92,7 +92,12 @@ between rounds.
 **Code.** `src/ghost_policies.py` defines random, chase, rule-based, and
 learned policies; `src/ghost_environment.py` provides the ghost-side
 Gymnasium interface; `src/train_alternating.py` manages training and an
-opponent pool.
+opponent pool. Learned-ghost evaluation uses the same shared-policy schedule
+as training: one ghost is controlled by PPO per game step, alternating ghost
+indices, while the other follows the default rule policy. If PPO selects a
+wall, a random legal neighboring move is used instead, both in training and
+evaluation. Evaluation builds the model observation from the pre-Pac-Man-move
+state, matching the timing and encoding used by ghost training.
 
 ```powershell
 python .\src\train_alternating.py --quick
@@ -180,6 +185,24 @@ python .\src\evaluate.py --model .\models\experiments\improved_observation\quick
 **Outputs.** Model archives and `.observation.json` files are saved under
 `models\experiments\improved_observation\`; Monitor and TensorBoard output is
 under the matching `logs\experiments\improved_observation\` directory.
+
+### Endgame observations and reward shaping
+
+The baseline observation and reward defaults remain unchanged. Opt-in
+`ObservationConfig` features can append a nearest-pellet BFS direction and
+normalized distance, plus a previous-action one-hot (the older
+`include_previous_pacman_action` flag remains supported). Optional
+`RewardConfig` terms can reward decreasing BFS distance, penalize increasing
+distance, and penalize revisiting one of the last ten movement cells.
+The `features_shaping_ghost` variant additionally observes nearest non-
+vulnerable ghost distance and escape direction plus its last move direction;
+it also adds a configurable penalty when Pac-Man moves closer while within
+three steps of a hostile ghost.
+
+Use `src\train_endgame_variants.py` to compare features-only,
+features-plus-shaping, shaping-only, and ghost-aware features-plus-shaping
+PPO runs; command-line usage and isolated output paths are documented in
+[training.md](./training.md).
 
 ## Curriculum learning
 

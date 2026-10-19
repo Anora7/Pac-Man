@@ -48,7 +48,11 @@ def plot_visitation_heatmaps(
         max_steps=max_steps,
         observation_config=observation_config,
     )
-    _configure_ghosts(env, ghost_type, ghost_model_path)
+    learned_ghost_controller = _configure_ghosts(
+        env,
+        ghost_type,
+        ghost_model_path,
+    )
     height, width = env.maze.height, env.maze.width
     pacman_visits = np.zeros((height, width), dtype=np.float64)
     ghost_visits = np.zeros((height, width), dtype=np.float64)
@@ -57,6 +61,8 @@ def plot_visitation_heatmaps(
     try:
         for episode in range(episodes):
             observation, info = env.reset(seed=seed + episode)
+            if learned_ghost_controller is not None:
+                learned_ghost_controller.reset()
             terminated = truncated = False
             while not (terminated or truncated):
                 row, col = env.pacman_position
@@ -64,9 +70,26 @@ def plot_visitation_heatmaps(
                 for ghost in env.ghosts:
                     ghost_visits[ghost.position.row, ghost.position.col] += 1
                 action, _ = model.predict(observation, deterministic=True)
+                ghost_actions = None
+                if learned_ghost_controller is not None:
+                    active_index = learned_ghost_controller.active_ghost_index
+                    ghost_actions = [None] * len(env.ghosts)
+                    ghost_actions[active_index] = (
+                        learned_ghost_controller.choose_action(
+                            env.maze,
+                            [ghost.position for ghost in env.ghosts],
+                            env.pacman_position,
+                            env._power_mode_active,
+                            env.ghosts[active_index].is_vulnerable,
+                            env.np_random,
+                        )
+                    )
                 observation, _, terminated, truncated, info = env.step(
-                    int(np.asarray(action).item())
+                    int(np.asarray(action).item()),
+                    ghost_actions=ghost_actions,
                 )
+                if learned_ghost_controller is not None:
+                    learned_ghost_controller.advance()
                 if info["last_step_events"]["caught"]:
                     row, col = env.pacman_position
                     caught_cells[row, col] += 1
@@ -182,6 +205,78 @@ def plot_value_function_danger_maps(
     finally:
         env.close()
     return paths
+
+
+def plot_endgame_variant_comparison(
+    features_shaping_csvs: tuple[Path, ...],
+    features_shaping_ghost_csvs: tuple[Path, ...],
+    output_path: Path,
+) -> Path:
+    """Compare deterministic endgame outcomes using existing seed CSVs."""
+    if len(features_shaping_csvs) != 3 or len(features_shaping_ghost_csvs) != 3:
+        raise ValueError("Provide exactly three seed CSVs for each trained variant.")
+
+    groups = (
+        (
+            "Baseline",
+            [_read_endgame_metrics(path, "baseline") for path in features_shaping_csvs],
+        ),
+        (
+            "features_shaping",
+            [_read_endgame_metrics(path, "trained") for path in features_shaping_csvs],
+        ),
+        (
+            "features_shaping_ghost\n(tested, no gain)",
+            [
+                _read_endgame_metrics(path, "trained")
+                for path in features_shaping_ghost_csvs
+            ],
+        ),
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure, axes = plt.subplots(1, 2, figsize=(12, 5))
+    labels = [label for label, _ in groups]
+    clear_means = [float(np.mean([row[0] for row in values])) for _, values in groups]
+    clear_stds = [float(np.std([row[0] for row in values], ddof=1)) for _, values in groups]
+    pellet_means = [float(np.mean([row[1] for row in values])) for _, values in groups]
+    pellet_stds = [float(np.std([row[1] for row in values], ddof=1)) for _, values in groups]
+    x_values = np.arange(len(groups))
+
+    axes[0].bar(x_values, clear_means, yerr=clear_stds, capsize=5, color="#4c78a8")
+    axes[0].set_title("Deterministic maze clears")
+    axes[0].set_ylabel("Mean clears per 30 episodes")
+    axes[0].set_ylim(bottom=0)
+    axes[1].bar(x_values, pellet_means, yerr=pellet_stds, capsize=5, color="#f58518")
+    axes[1].set_title("Deterministic pellets")
+    axes[1].set_ylabel("Mean pellets per episode")
+    for axis in axes:
+        axis.set_xticks(x_values, labels, rotation=12, ha="right")
+        axis.grid(axis="y", alpha=0.25)
+    figure.suptitle("Endgame variants (error bars: sample SD across seeds)")
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(figure)
+    return output_path
+
+
+def _read_endgame_metrics(csv_path: Path, model_name: str) -> tuple[float, float]:
+    """Read clears and mean pellets for one deterministic 30-game CSV row."""
+    with csv_path.open(newline="", encoding="utf-8-sig") as source:
+        rows = [
+            row
+            for row in csv.DictReader(source)
+            if row.get("model") == model_name
+            and row.get("policy") == "deterministic"
+        ]
+    if len(rows) != 1:
+        raise ValueError(
+            f"Expected one deterministic {model_name!r} row in {csv_path}, "
+            f"found {len(rows)}."
+        )
+    row = rows[0]
+    if int(row["episodes"]) != 30:
+        raise ValueError(f"Expected 30 episodes in {csv_path}, got {row['episodes']}.")
+    return float(row["clears"]), float(row["mean_pellets"])
 
 
 def plot_learning_curves(
@@ -503,6 +598,66 @@ def run_priority_analysis() -> list[Path]:
     return [output]
 
 
+def run_endgame_analysis() -> list[Path]:
+    """Generate the endgame comparison and diagnostics for the 1M demo model."""
+    experiment_root = Path("models/experiments/endgame_300k")
+    results_root = Path("results/priority_300k/endgame_variants")
+    plots_root = Path("plots/experiments/priority_300k")
+    demo_model = (
+        experiment_root
+        / "round2_seed_42_steps_1000000"
+        / "features_shaping"
+        / "final_model.zip"
+    )
+    if not demo_model.is_file():
+        raise FileNotFoundError(f"Missing 1M-step demo model: {demo_model}")
+
+    features_shaping_csvs = (
+        results_root / "features_shaping.csv",
+        results_root / "round2_seed_43_steps_300000" / "features_shaping.csv",
+        results_root / "round2_seed_44_steps_300000" / "features_shaping.csv",
+    )
+    features_shaping_ghost_csvs = tuple(
+        results_root
+        / f"round3_seed_{seed}_steps_300000"
+        / "features_shaping_ghost.csv"
+        for seed in (42, 43, 44)
+    )
+    required_csvs = (*features_shaping_csvs, *features_shaping_ghost_csvs)
+    missing_csvs = [path for path in required_csvs if not path.is_file()]
+    if missing_csvs:
+        raise FileNotFoundError(
+            "Missing endgame evaluation CSV(s): "
+            + ", ".join(str(path) for path in missing_csvs)
+        )
+
+    outputs = [
+        plot_endgame_variant_comparison(
+            features_shaping_csvs,
+            features_shaping_ghost_csvs,
+            plots_root / "endgame_variant_comparison.png",
+        )
+    ]
+    demo_plots = AnalysisPlotConfig(plots_dir=plots_root / "demo_1m_seed_42")
+    outputs.extend(
+        plot_visitation_heatmaps(
+            demo_model,
+            episodes=5,
+            seed=DEFAULT_SEED,
+            config=demo_plots,
+        ).values()
+    )
+    outputs.extend(
+        plot_value_function_danger_maps(
+            demo_model,
+            config=demo_plots,
+        ).values()
+    )
+    for output in outputs:
+        print(f"Analysis plot: {output}")
+    return outputs
+
+
 def main() -> None:
     """Run analysis plots for the selected experiment outputs."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -517,6 +672,11 @@ def main() -> None:
         action="store_true",
         help="Plot the 300k-step alternating results.",
     )
+    modes.add_argument(
+        "--endgame",
+        action="store_true",
+        help="Plot saved endgame comparisons and demo-model diagnostics.",
+    )
     parser.add_argument(
         "--episodes",
         type=int,
@@ -528,8 +688,10 @@ def main() -> None:
         parser.error("--episodes must be at least 1.")
     if args.medium:
         run_medium_analysis(args.episodes)
-    else:
+    elif args.priority:
         run_priority_analysis()
+    else:
+        run_endgame_analysis()
 
 
 if __name__ == "__main__":

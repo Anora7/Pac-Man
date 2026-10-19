@@ -241,6 +241,108 @@ cannot overwrite one another in the heatmap. Priority matrix and alternating
 dashboard plots were regenerated. Final validation:
 `python -m pytest tests\ -q` — 515 passed.
 
+## Endgame Navigation Variants — Configured
+
+Added an opt-in endgame experiment with three isolated 300,000-step PPO arms:
+nearest-pellet direction/distance plus previous-action features; those
+features with BFS-progress and recent-cell revisit shaping; and shaping with
+the baseline observation. The shaping arm uses +0.5 for a decrease in
+nearest-pellet BFS distance, -0.5 for an increase, and -0.1 for revisiting a
+cell among the last ten recorded movement positions. Reward defaults remain
+zero for each new term.
+
+The runner defaults to seed 42, evaluates the unchanged baseline and trained
+model for 30 deterministic and 30 stochastic games per variant, and reports
+mean pellets, mean steps, clear count, and loop rate. Loop rate is defined as
+the share of episodes with a 50-step window occupying at most three distinct
+cells. Use `--variant`, `--steps`, `--seed`, and `--output-tag` to run
+isolated worker processes. Every output folder includes the seed and step
+count; the optional tag is an additional prefix. Training was not run as part
+of this implementation task; no
+300,000-step variant run, endgame CSV, or endgame model outputs are claimed
+yet. The full regression suite passed (540 tests), and a short opt-in-feature
+PPO training/evaluation smoke check passed.
+
+## Endgame Nearest-Ghost Variant — Configured
+
+Added `ObservationConfig.include_nearest_ghost` as a disabled-by-default
+nine-value feature: BFS escape direction from the nearest reachable
+non-vulnerable ghost, normalized path distance to that ghost, and its last
+actual move direction. Added the zero-default
+`RewardConfig.GHOST_DISTANCE_DECREASE` term. The new `features_shaping_ghost`
+arm combines these additions with all `features_shaping` signals and uses a
+-0.5 penalty when Pac-Man moves closer while the nearest hostile ghost is
+within three steps.
+
+The new arm accepts the existing `--variant`, `--steps`, `--seed`, and
+`--output-tag` options and uses separate outputs. Existing variant CSVs and
+trained models were not touched. No training was started for this change.
+Full regression validation passed (540 tests).
+
+## Endgame Evaluation and Diagnostic Plots
+
+Evaluated the baseline, the 1M-step seed-42 `features_shaping` demo, and the
+300k-step seed-44 `features_shaping` final model against random, chase, rule,
+personality, and learned ghosts. The matrix used 30 distinct episode seeds
+per cell (15 cells total) and the priority alternating seed-42 round-04 ghost.
+Each model loaded its matching observation sidecar. The baseline hash remained
+`D04661692A40D81D5B5EA186B6257231D8AC283B2072266D6C2A923E65BC644F`.
+
+The 1M demo cleared 13/30 episodes against rule ghosts, 12/30 against
+personality ghosts, and 23/30 against random ghosts; it cleared none against
+chase ghosts and cleared all 30 against the selected learned ghost. The
+300k seed-44 model cleared 13/30 against rule ghosts, 8/30 against
+personality ghosts, 20/30 against random ghosts, 1/30 against chase ghosts,
+and all 30 against the selected learned ghost. The learned-ghost results in
+this earlier matrix used the evaluation protocol diagnosed below and should
+not be treated as final learned-ghost metrics.
+
+The deterministic comparison chart uses the existing per-seed CSVs only.
+Across seeds, `features_shaping` averaged 11.67 clears (sample SD 1.53) and
+52.93 pellets (SD 0.87); `features_shaping_ghost` averaged 11.33 clears (SD
+2.08) and 52.60 pellets (SD 3.62). Error bars show sample standard deviation.
+The 1M demo diagnostic set contains Pac-Man visitation, ghost occupancy,
+caught-cell frequency, and three critic-value scenarios. No training or
+baseline-model modification occurred.
+
+## Learned-Ghost Evaluation Diagnosis
+
+Before correction, three episodes per saved final ghost were run against the
+1M-step seed-42 `features_shaping` Pac-Man model, using seeds 42–44. All three
+ghost models emitted one constant action at every decision: seed 42 always
+chose Down (1), seed 43 always chose Right (3), and seed 44 always chose Left
+(2). The evaluation environment allowed wall-directed actions to leave a
+ghost in place, resulting in 0/267 or 3/267 actual moves per ghost. Across the
+two ghosts, wall actions were 100% for seed 42, 99.4% for seed 43, and 99.4%
+for seed 44. Visited-cell counts were one cell per ghost except one ghost
+each in seeds 43 and 44, which visited two cells.
+
+The inference observation matched the training observation shape (866
+float32 values) and shared the same `build_ghost_observation()` construction;
+runtime comparison found no mismatches. There was, however, a policy
+evaluation mismatch: training cycles PPO control over one ghost per game
+step while other ghosts use the rule policy, whereas evaluation had assigned
+PPO to both ghosts on every step.
+
+Fixed both issues without retraining: blocked PPO actions now fall back to a
+random legal neighboring move in training and evaluation, and evaluation
+cycles the learned policy exactly as the training environment does. A final
+timing check also moved learned-action selection to the pre-Pac-Man-move
+state, matching the state timing used by `GhostEnvironment`. The feature-demo
+Pac-Man evaluation used 30 distinct seeds (42–71) for each opponent. Rule
+ghosts caught Pac-Man in 17/30 games (56.7%). The final seed-42, seed-43, and
+seed-44 learned ghosts caught Pac-Man in 0/30 (0.0%), 7/30 (23.3%), and
+20/30 (66.7%), respectively. In final three-episode motion checks, all six
+ghosts moved on 100% of their movement decisions and visited 5–30 distinct
+cells. Their raw PPO outputs remained direction-collapsed; 44.4–57.5% of
+learned decisions pointed at walls and were diverted to legal fallback
+actions. Counts by ghost (index 0 / index 1): seed 42 had 135/132 learned
+decisions, 60/135 and 63/132 wall actions, and 5/6 distinct cells; seed 43
+had 113/111 decisions, 65/113 and 54/111 wall actions, and 30/20 cells; seed
+44 had 107/104 decisions, 60/107 and 58/104 wall actions, and 19/18 cells.
+Observation checks found no shape or construction mismatch. No training was
+run and the baseline hash was unchanged.
+
 # Experiment Guidelines
 # Experiment Guidelines
 

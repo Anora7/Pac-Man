@@ -90,7 +90,46 @@ Indicate during which implementation phase this issue should ideally be resolved
 
 # Current Issues
 
-At project initialization there are no known implementation issues.
+## ISSUE-002
+
+### Title
+
+Pac-Man May Oscillate After Nearby Pellets Are Exhausted
+
+### Status
+
+Investigating
+
+### Priority
+
+Medium
+
+### Category
+
+PPO
+
+### Description
+
+Observed gameplay can oscillate between nearby cells after local pellets are
+consumed and does not clear the baseline maze. Opt-in nearest-pellet
+observation and progress/revisit shaping variants have been evaluated. The
+three saved `features_shaping` runs averaged 52.93 pellets and 11.67 clears
+per 30 deterministic episodes; the three ghost-aware runs averaged 52.60
+pellets and 11.33 clears. These results do not indicate an additional gain
+from the nearest-ghost feature, and the issue remains open for the baseline.
+
+### Expected Behavior
+
+The variant evaluation should show reduced loop rate and ideally improved
+pellet collection or maze clears without changing the baseline model or
+defaults.
+
+### Actual Behavior
+
+The baseline reference rows in the three `features_shaping` CSVs averaged
+44.43 pellets and zero clears. The selected 1M demo model cleared 13/30
+against rule ghosts in the current robustness matrix, but only 0/30 against
+chase ghosts; behavior is opponent-dependent.
 
 Add issues here as they are discovered.
 
@@ -138,6 +177,34 @@ Resolved
 Date:
 
 YYYY-MM-DD
+
+---
+
+### ISSUE-003
+
+Learned ghosts repeatedly selected wall-directed actions, and evaluation
+controlled all ghosts with PPO simultaneously despite shared training
+controlling one ghost per step.
+
+**Resolution**
+
+Evaluation now rotates learned control across ghosts in the training schedule.
+Wall-directed PPO actions use a random legal-neighbor fallback in both
+training and evaluation. In three diagnostic episodes, the pre-fix models
+selected a single direction continuously and had only 0–1.1% actual movement
+per ghost. After correction, each ghost moved on 100% of its decisions. The
+three final ghosts were re-evaluated for 30 episodes against the 1M demo
+Pac-Man model; catch rates were 0.0%, 23.3%, and 66.7% for seeds 42, 43, and
+44 respectively. Learned actions are chosen from the matching pre-step
+observation.
+
+Status:
+
+Resolved
+
+Date:
+
+2026-10-19
 
 ---
 

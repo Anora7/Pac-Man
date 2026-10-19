@@ -25,9 +25,31 @@ python src/evaluate.py --model models/experiments/alternating/seed_42/round_01_p
 | `--seed` | `None` | Seed for `env.reset()` |
 | `--ghost-type` | `rule` | Compare against `rule`, `random`, `chase`, or `learned` ghosts |
 | `--ghost-model` | — | Ghost PPO archive required for `--ghost-type learned` |
-| `--obs-config` | `baseline` | `baseline`, `ghost-direction`, `previous-action`, or `enhanced` |
-| `--render-fps` | `8` | Pygame playback rate |
+| `--obs-config` | `baseline` | `baseline`, `ghost-direction`, `previous-action`, `enhanced`, or `metadata` |
+| `--render-fps` | `4` | Pygame playback rate |
 | `--save-csv` | — | Optional per-episode metrics CSV |
+
+For `--ghost-type learned`, evaluation rotates PPO control across one ghost
+per game step, with the other ghost following the default rule policy. This
+matches the shared-policy training setup. A predicted wall move falls back
+to a random legal neighboring cell. The learned action is selected from the
+state before Pac-Man moves, as it is during training.
+
+Use `--obs-config metadata` to load the observation settings saved beside an
+experiment model. For example, play the 1M-step endgame demo for five
+deterministic episodes:
+
+```powershell
+python src\evaluate.py --model models\experiments\endgame_300k\round2_seed_42_steps_1000000\features_shaping\final_model.zip --episodes 5 --render --obs-config metadata
+```
+
+The curated endgame robustness matrix and its comparison/diagnostic plots
+can be regenerated with:
+
+```powershell
+python src\evaluate_matrix.py --endgame
+python src\analysis_plots.py --endgame
+```
 
 ---
 
@@ -79,10 +101,11 @@ result = evaluate(EvaluationConfig(n_episodes=10), model=model)
 | `avg_completion_fraction` | `float` | Mean fraction of pellets collected |
 | `episodes` | `list[EpisodeResult]` | Per-episode breakdown |
 
-When a `.observation.json` sidecar exists next to a model, evaluation loads
-its observation settings automatically. Missing sidecars mean the baseline
-723-value observation; explicitly pass `observation_config` or `--obs-config`
-for models trained with optional features.
+When the Python API's `EvaluationConfig.observation_config` is omitted,
+evaluation loads settings from the model's `.observation.json` sidecar; a
+missing sidecar means the baseline 723-value observation. The CLI defaults to
+`--obs-config baseline`; pass `--obs-config metadata` to load sidecar settings
+for a model trained with optional features.
 When a seed is supplied, episode 1 uses that seed and each subsequent episode
 uses the next integer seed, so evaluation episodes have distinct reproducible
 environment seeds.

@@ -18,7 +18,11 @@ from enum import Enum, auto
 import numpy as np
 
 from config import ACTION_DELTAS, Action, GHOST_CHASE_PROBABILITY, GHOST_CHASE_RADIUS
-from ghost_policies import GhostPolicy, RuleBasedGhostPolicy
+from ghost_policies import (
+    GhostPolicy,
+    RuleBasedGhostPolicy,
+    legal_action_or_fallback,
+)
 from maze import Maze, Position
 
 
@@ -164,7 +168,12 @@ class Ghost:
             connected maze.
         """
         if action_override is not None:
-            action = action_override
+            action = legal_action_or_fallback(
+                maze,
+                self.position,
+                action_override,
+                rng,
+            )
         elif self.policy is not None:
             action = self.policy.choose_action(
                 maze,

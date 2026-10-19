@@ -10,11 +10,13 @@ This module must not contain RL logic, rendering logic, or ghost logic.
 
 from __future__ import annotations
 
+from collections import deque
 from typing import NamedTuple
 
 import numpy as np
 
 from config import (
+    ACTION_DELTAS,
     CellType,
     MAZE_HEIGHT,
     MAZE_WIDTH,
@@ -208,6 +210,60 @@ class Maze:
     def is_cleared(self) -> bool:
         """Return True when every pellet has been consumed."""
         return self.pellets_remaining() == 0
+
+    def nearest_pellet_path(
+        self,
+        start: Position,
+    ) -> tuple[int | None, int | None]:
+        """Return the first action and BFS distance to the nearest pellet.
+
+        Ties follow the action order in ``ACTION_DELTAS``. If there are no
+        reachable pellets, or *start* is itself a pellet, the first action is
+        ``None``. The distance is ``None`` only when no pellet is reachable.
+        """
+        if not self.is_walkable(start):
+            raise ValueError(f"Start position is not walkable: {start}.")
+
+        queue: deque[tuple[Position, int | None, int]] = deque(
+            [(start, None, 0)]
+        )
+        visited = {start}
+        while queue:
+            position, first_action, distance = queue.popleft()
+            if self._pellets[position.row, position.col]:
+                return first_action, distance
+            for action, delta in ACTION_DELTAS.items():
+                neighbour = position + delta
+                if (
+                    neighbour not in visited
+                    and self.is_walkable(neighbour)
+                ):
+                    visited.add(neighbour)
+                    queue.append((
+                        neighbour,
+                        int(action) if first_action is None else first_action,
+                        distance + 1,
+                    ))
+        return None, None
+
+    def distances_from(self, start: Position) -> dict[Position, int]:
+        """Return shortest walkable-cell distances from *start* using BFS."""
+        if not self.is_walkable(start):
+            raise ValueError(f"Start position is not walkable: {start}.")
+
+        distances = {start: 0}
+        queue: deque[Position] = deque([start])
+        while queue:
+            position = queue.popleft()
+            for delta in ACTION_DELTAS.values():
+                neighbour = position + delta
+                if (
+                    neighbour not in distances
+                    and self.is_walkable(neighbour)
+                ):
+                    distances[neighbour] = distances[position] + 1
+                    queue.append(neighbour)
+        return distances
 
     # ------------------------------------------------------------------
     # Spawn locations

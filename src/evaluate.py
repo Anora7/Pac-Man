@@ -51,9 +51,9 @@ from config import (
 from environment import PacmanEnvironment
 from ghost_policies import (
     ChaseGhostPolicy,
-    LearnedGhostPolicy,
     RandomGhostPolicy,
     RuleBasedGhostPolicy,
+    SharedLearnedGhostController,
 )
 from observation_metadata import load_observation_config
 
@@ -85,6 +85,7 @@ class EvaluationConfig:
                             model sidecar or use baseline settings.
         render_fps:    Target Pygame playback rate.
         save_csv:      Optional per-episode metrics export path.
+        record_trajectory: Include each episode's Pac-Man positions in results.
     """
 
     model_path: Path = field(default_factory=lambda: Path("models/best_model.zip"))
@@ -101,6 +102,7 @@ class EvaluationConfig:
     save_csv: Path | None = None
     reward_config: RewardConfig = REWARDS
     ghost_count: int = GHOST_COUNT
+    record_trajectory: bool = False
 
     def __post_init__(self) -> None:
         if self.n_episodes < 1:
@@ -138,6 +140,7 @@ class EpisodeResult:
     caught: bool
     truncated: bool
     completion_fraction: float
+    positions: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -247,7 +250,11 @@ def evaluate(
         reward_config=config.reward_config,
         ghost_count=config.ghost_count,
     )
-    _configure_ghosts(env, config.ghost_type, config.ghost_model_path)
+    learned_ghost_controller = _configure_ghosts(
+        env,
+        config.ghost_type,
+        config.ghost_model_path,
+    )
     if model.observation_space.shape != env.observation_space.shape:
         env.close()
         raise ValueError(
@@ -271,14 +278,40 @@ def evaluate(
                 None if config.seed is None else config.seed + ep - 1
             )
             obs, info = env.reset(seed=episode_seed)
+            if learned_ghost_controller is not None:
+                learned_ghost_controller.reset()
+            positions: list[tuple[int, int]] = []
+            if config.record_trajectory:
+                positions.append(tuple(info["pacman_position"]))
             total_reward = 0.0
             terminated = False
             truncated = False
 
             while not (terminated or truncated or env.window_closed):
                 action, _ = model.predict(obs, deterministic=config.deterministic)
-                obs, reward, terminated, truncated, info = env.step(int(action))
+                ghost_actions = None
+                if learned_ghost_controller is not None:
+                    active_index = learned_ghost_controller.active_ghost_index
+                    ghost_actions = [None] * len(env.ghosts)
+                    ghost_actions[active_index] = (
+                        learned_ghost_controller.choose_action(
+                            env.maze,
+                            [ghost.position for ghost in env.ghosts],
+                            env.pacman_position,
+                            env._power_mode_active,
+                            env.ghosts[active_index].is_vulnerable,
+                            env.np_random,
+                        )
+                    )
+                obs, reward, terminated, truncated, info = env.step(
+                    int(action),
+                    ghost_actions=ghost_actions,
+                )
                 total_reward += reward
+                if learned_ghost_controller is not None:
+                    learned_ghost_controller.advance()
+                if config.record_trajectory:
+                    positions.append(tuple(info["pacman_position"]))
                 if config.render:
                     env.render()
             if env.window_closed and not terminated:
@@ -302,6 +335,7 @@ def evaluate(
                 caught=caught,
                 truncated=truncated,
                 completion_fraction=completion,
+                positions=tuple(positions),
             )
             episodes.append(result)
 
@@ -355,18 +389,26 @@ def _configure_ghosts(
     env: PacmanEnvironment,
     ghost_type: str,
     ghost_model_path: Path | None,
-) -> None:
+) -> SharedLearnedGhostController | None:
     """Install the requested ghost policy without changing default rules."""
     if ghost_type == "rule":
-        return
+        return None
     if ghost_type == "random":
         policies = [RandomGhostPolicy() for _ in env.ghosts]
     elif ghost_type == "chase":
         policies = [ChaseGhostPolicy() for _ in env.ghosts]
     elif ghost_type == "learned":
         assert ghost_model_path is not None
-        learned_policy = LearnedGhostPolicy.load(str(ghost_model_path))
-        policies = [learned_policy for _ in env.ghosts]
+        from stable_baselines3 import PPO
+
+        ghost_model = PPO.load(str(ghost_model_path), device="cpu")
+        controller = SharedLearnedGhostController(
+            ghost_model,
+            len(env.ghosts),
+        )
+        for index, ghost in enumerate(env.ghosts):
+            ghost.policy = controller.policy_for(index)
+        return controller
     elif ghost_type == "personality":
         personalities = GHOST_PERSONALITIES
         policies = [
@@ -383,6 +425,7 @@ def _configure_ghosts(
         raise ValueError(f"Unsupported ghost_type: {ghost_type}")
     for ghost, policy in zip(env.ghosts, policies):
         ghost.policy = policy
+    return None
 
 
 def _save_episode_csv(path: Path, episodes: list[EpisodeResult]) -> None:
@@ -459,7 +502,13 @@ if __name__ == "__main__":
     parser.add_argument("--ghost-model", type=Path)
     parser.add_argument(
         "--obs-config",
-        choices=("baseline", "ghost-direction", "previous-action", "enhanced"),
+        choices=(
+            "baseline",
+            "ghost-direction",
+            "previous-action",
+            "enhanced",
+            "metadata",
+        ),
         default="baseline",
     )
     parser.add_argument("--render-fps", type=int, default=FPS)
@@ -468,15 +517,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    _config = EvaluationConfig(
-        model_path=args.model,
-        n_episodes=args.episodes,
-        render=args.render,
-        deterministic=args.deterministic,
-        seed=args.seed,
-        ghost_type=args.ghost_type,
-        ghost_model_path=args.ghost_model,
-        observation_config={
+    observation_config = None
+    if args.obs_config != "metadata":
+        observation_config = {
             "baseline": ObservationConfig(),
             "ghost-direction": ObservationConfig(include_ghost_direction=True),
             "previous-action": ObservationConfig(
@@ -486,7 +529,17 @@ if __name__ == "__main__":
                 include_ghost_direction=True,
                 include_previous_pacman_action=True,
             ),
-        }[args.obs_config],
+        }[args.obs_config]
+
+    _config = EvaluationConfig(
+        model_path=args.model,
+        n_episodes=args.episodes,
+        render=args.render,
+        deterministic=args.deterministic,
+        seed=args.seed,
+        ghost_type=args.ghost_type,
+        ghost_model_path=args.ghost_model,
+        observation_config=observation_config,
         render_fps=args.render_fps,
         save_csv=args.save_csv,
     )

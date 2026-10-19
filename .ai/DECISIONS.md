@@ -461,6 +461,135 @@ evaluation overhead.
 
 ---
 
+## Decision 012
+
+### Title
+
+Keep Endgame Navigation Features and Shaping Opt-In
+
+### Date
+
+2026-10-19
+
+### Status
+
+Accepted
+
+### Context
+
+Pac-Man can oscillate after nearby pellets are exhausted. Nearest-pellet
+direction/distance features and small progress/revisit rewards are being
+evaluated as isolated experiment variants.
+
+### Alternatives Considered
+
+- Change the default observation and reward for every model
+- Add opt-in features and shaping while preserving existing model inputs
+
+### Decision
+
+Keep all added observation flags and shaping values disabled by default.
+Train and evaluate the feature-only, feature-plus-shaping, and shaping-only
+variants in isolated output directories; keep baseline model files untouched.
+
+### Rationale
+
+Separate experiment arms make it possible to distinguish observation effects
+from reward effects without breaking existing model compatibility.
+
+### Consequences
+
+Variant models must carry their observation metadata and be evaluated with
+matching settings. The endgame loop-rate result will determine whether the
+approach addresses the reported oscillation.
+
+---
+
+## Decision 013
+
+### Title
+
+Keep Nearest-Ghost Awareness as a Separate Endgame Variant
+
+### Date
+
+2026-10-19
+
+### Status
+
+Accepted
+
+### Context
+
+Pellet-directed endgame signals do not explicitly tell the policy the
+topological escape direction or movement trend of a nearby active ghost.
+
+### Alternatives Considered
+
+- Add ghost awareness to all feature variants
+- Isolate ghost awareness and its proximity penalty in a dedicated arm
+
+### Decision
+
+Add a disabled-by-default `include_nearest_ghost` feature and a
+zero-default ghost-distance reward term. Enable both only in
+`features_shaping_ghost`.
+
+### Rationale
+
+This permits a controlled evaluation of hostile-ghost awareness without
+changing the established feature/shaping variants or baseline model inputs.
+
+### Consequences
+
+The feature arm appends nine values: a BFS escape direction, normalized
+distance to the nearest reachable non-vulnerable ghost, and that ghost's last
+move direction. Its reward term applies -0.5 only when Pac-Man's move reduces
+distance while the nearest hostile ghost is within three steps.
+
+---
+
+## Decision 014
+
+### Title
+
+Match Learned-Ghost Evaluation to Shared Training
+
+### Date
+
+2026-10-19
+
+### Status
+
+Accepted
+
+### Context
+
+Final learned ghosts could repeatedly select a direction blocked by a wall.
+Evaluation also applied the shared PPO model to every ghost each step, while
+shared training controls one ghost per step and leaves the others on the
+default rule policy.
+
+### Decision
+
+Use a random legal-neighbor fallback for wall-directed learned actions in
+both ghost training and inference. During evaluation, rotate learned control
+across one ghost per environment step and select its action from the
+pre-Pac-Man-move observation, matching the shared training schedule and timing.
+
+### Rationale
+
+This prevents a blocked model action from leaving a ghost stationary and
+makes final catch-rate evaluations follow the trained opponent protocol.
+
+### Consequences
+
+Learned-ghost evaluation is now intentionally different from assigning the
+learned policy to every ghost simultaneously. Existing saved ghost models
+remain unchanged and should be judged using this shared-policy evaluation.
+
+---
+
 ## Future Decisions
 
 Record future decisions regarding:

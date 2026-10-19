@@ -24,6 +24,7 @@ Rendering is delegated to renderer.py via a RenderState snapshot.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Sequence
 
 import numpy as np
@@ -45,6 +46,10 @@ from config import (
     GHOST_DIRECTION_FEATURES,
     GHOST_OBSERVATION_FEATURES,
     PACMAN_ACTION_FEATURES,
+    NEAREST_PELLET_DIRECTION_FEATURES,
+    NEAREST_PELLET_FEATURES,
+    NEAREST_GHOST_FEATURES,
+    GHOST_PROXIMITY_DISTANCE,
     POWER_MODE_DURATION,
 )
 from ghost import Ghost
@@ -155,7 +160,14 @@ class PacmanEnvironment(gym.Env):
         obs_size: int = self._maze.height * self._maze.width * 5 + 3
         if observation_config.include_ghost_direction:
             obs_size += len(self._ghosts) * GHOST_OBSERVATION_FEATURES
-        if observation_config.include_previous_pacman_action:
+        if observation_config.include_nearest_pellet:
+            obs_size += NEAREST_PELLET_FEATURES
+        if observation_config.include_nearest_ghost:
+            obs_size += NEAREST_GHOST_FEATURES
+        if (
+            observation_config.include_previous_pacman_action
+            or observation_config.include_previous_action
+        ):
             obs_size += PACMAN_ACTION_FEATURES
         self._observation_size = obs_size
 
@@ -176,6 +188,7 @@ class PacmanEnvironment(gym.Env):
         self._episode_reward: float = 0.0
         self._episode: int = 0
         self._previous_pacman_action: int | None = None
+        self._recent_pacman_positions: deque[Position] = deque(maxlen=10)
 
         # Renderer — created lazily on the first render() call
         self._renderer: PacmanRenderer | None = None
@@ -213,6 +226,8 @@ class PacmanEnvironment(gym.Env):
         self._episode_reward = 0.0
         self._episode += 1
         self._previous_pacman_action = None
+        self._recent_pacman_positions.clear()
+        self._recent_pacman_positions.append(self._pacman_pos)
         self._last_step_events = {
             "pellet_eaten": False,
             "power_pellet_eaten": False,
@@ -267,6 +282,9 @@ class PacmanEnvironment(gym.Env):
         truncated = False
 
         hit_wall = False
+        pellet_distance_decreased = False
+        pellet_distance_increased = False
+        ghost_distance_decreased = False
         pellet_eaten = False
         power_pellet_eaten = False
         ghosts_eaten = 0
@@ -274,15 +292,39 @@ class PacmanEnvironment(gym.Env):
         cleared = False
 
         # 1–2. Move Pac-Man (or stay on wall)
+        previous_position = self._pacman_pos
+        ghost_distance_before = (
+            self._nearest_non_vulnerable_ghost_distance(previous_position)
+            if self._reward_config.GHOST_DISTANCE_DECREASE != 0.0
+            else None
+        )
         action = Action(action)
         delta = ACTION_DELTAS[action]
-        candidate = self._pacman_pos + delta
+        candidate = previous_position + delta
         if not self._maze.is_walkable(candidate):
             hit_wall = True
-            candidate = self._pacman_pos
+            candidate = previous_position
+
+        if (
+            self._reward_config.PELLET_DISTANCE_DECREASE != 0.0
+            or self._reward_config.PELLET_DISTANCE_INCREASE != 0.0
+        ):
+            _, distance_before = self._maze.nearest_pellet_path(
+                previous_position
+            )
+            _, distance_after = self._maze.nearest_pellet_path(candidate)
+            if distance_before is not None and distance_after is not None:
+                pellet_distance_decreased = distance_after < distance_before
+                pellet_distance_increased = distance_after > distance_before
 
         # 3. Apply move
+        revisited_cell = (
+            candidate != previous_position
+            and candidate in self._recent_pacman_positions
+        )
         self._pacman_pos = candidate
+        if candidate != previous_position:
+            self._recent_pacman_positions.append(candidate)
         self._previous_pacman_action = int(action)
 
         # 4. Pellet consumption
@@ -297,6 +339,19 @@ class PacmanEnvironment(gym.Env):
             self._power_mode_steps_remaining = POWER_MODE_DURATION
             for ghost in self._ghosts:
                 ghost.make_vulnerable()
+
+        if (
+            ghost_distance_before is not None
+            and self._reward_config.GHOST_DISTANCE_DECREASE != 0.0
+        ):
+            ghost_distance_after = self._nearest_non_vulnerable_ghost_distance(
+                self._pacman_pos
+            )
+            ghost_distance_decreased = (
+                ghost_distance_after is not None
+                and ghost_distance_after <= GHOST_PROXIMITY_DISTANCE
+                and ghost_distance_after < ghost_distance_before
+            )
 
         # 5. Collision: Pac-Man moved into a ghost
         _caught, _eaten = self._check_collisions()
@@ -335,10 +390,12 @@ class PacmanEnvironment(gym.Env):
                     ),
                     action_override=override,
                 )
-                self._ghost_last_directions[index] = _direction_index(
+                ghost_direction = _direction_index(
                     previous_position,
                     ghost.position,
                 )
+                if ghost_direction is not None:
+                    self._ghost_last_directions[index] = ghost_direction
 
         # 8. Collision: a ghost moved into Pac-Man
         if not terminated:
@@ -361,6 +418,10 @@ class PacmanEnvironment(gym.Env):
             ghosts_eaten=ghosts_eaten,
             caught=caught,
             cleared=cleared,
+            pellet_distance_decreased=pellet_distance_decreased,
+            pellet_distance_increased=pellet_distance_increased,
+            revisited_cell=revisited_cell,
+            ghost_distance_decreased=ghost_distance_decreased,
             reward_config=self._reward_config,
         )
         self._step_count += 1
@@ -447,6 +508,60 @@ class PacmanEnvironment(gym.Env):
 
         return caught, ghosts_eaten
 
+    def _nearest_non_vulnerable_ghost_distance(
+        self,
+        position: Position,
+    ) -> int | None:
+        """Return the closest reachable normal ghost's BFS distance."""
+        pacman_distances = self._maze.distances_from(position)
+        distances = [
+            pacman_distances[ghost.position]
+            for ghost in self._ghosts
+            if not ghost.is_vulnerable and ghost.position in pacman_distances
+        ]
+        return min(distances) if distances else None
+
+    def _nearest_ghost_features(self) -> np.ndarray:
+        """Encode escape direction, distance, and last move of nearest ghost."""
+        assert self._pacman_pos is not None
+        features = np.zeros(NEAREST_GHOST_FEATURES, dtype=np.float32)
+        pacman_distances = self._maze.distances_from(self._pacman_pos)
+        candidates = [
+            (pacman_distances[ghost.position], index, ghost)
+            for index, ghost in enumerate(self._ghosts)
+            if (
+                not ghost.is_vulnerable
+                and ghost.position in pacman_distances
+            )
+        ]
+        if not candidates:
+            return features
+
+        distance, ghost_index, ghost = min(candidates, key=lambda item: item[0])
+        ghost_distances = self._maze.distances_from(ghost.position)
+        farther_steps = [
+            (ghost_distances[neighbour], int(action))
+            for action, delta in ACTION_DELTAS.items()
+            if self._maze.is_walkable(
+                neighbour := self._pacman_pos + delta
+            )
+            and neighbour in ghost_distances
+            and ghost_distances[neighbour] > distance
+        ]
+        if farther_steps:
+            _, escape_action = max(
+                farther_steps,
+                key=lambda item: item[0],
+            )
+            features[escape_action] = 1.0
+
+        max_distance = max(1, self._maze.height * self._maze.width - 1)
+        features[4] = np.float32(distance / max_distance)
+        last_direction = self._ghost_last_directions[ghost_index]
+        if last_direction is not None:
+            features[5 + last_direction] = 1.0
+        return features
+
     def _build_observation(self) -> np.ndarray:
         """Build the 723-element flat float32 observation vector.
 
@@ -499,7 +614,34 @@ class PacmanEnvironment(gym.Env):
                     np.asarray([float(ghost.is_vulnerable)], dtype=np.float32)
                 )
 
-        if self._observation_config.include_previous_pacman_action:
+        if self._observation_config.include_nearest_pellet:
+            direction, distance = self._maze.nearest_pellet_path(
+                self._pacman_pos
+            )
+            direction_features = np.zeros(
+                NEAREST_PELLET_DIRECTION_FEATURES,
+                dtype=np.float32,
+            )
+            if direction is not None:
+                direction_features[direction] = 1.0
+            normalized_distance = (
+                distance / max(1, H * W - 1)
+                if distance is not None else 0.0
+            )
+            observation_parts.append(
+                np.concatenate((
+                    direction_features,
+                    np.asarray([normalized_distance], dtype=np.float32),
+                ))
+            )
+
+        if self._observation_config.include_nearest_ghost:
+            observation_parts.append(self._nearest_ghost_features())
+
+        if (
+            self._observation_config.include_previous_pacman_action
+            or self._observation_config.include_previous_action
+        ):
             action_features = np.zeros(PACMAN_ACTION_FEATURES, dtype=np.float32)
             if self._previous_pacman_action is not None:
                 action_features[self._previous_pacman_action] = 1.0

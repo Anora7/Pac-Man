@@ -20,6 +20,7 @@ from config import (
 )
 from environment import PacmanEnvironment
 from ghost_observations import build_ghost_observation
+from ghost_policies import legal_action_or_fallback
 from maze import Position
 
 
@@ -95,7 +96,12 @@ class GhostEnvironment(gym.Env):
             else self._controlled_ghost_index
         )
         ghost_actions: list[int | None] = [None] * ghost_count
-        ghost_actions[active_index] = int(action)
+        ghost_actions[active_index] = legal_action_or_fallback(
+            self._env.maze,
+            self._env.ghosts[active_index].position,
+            int(action),
+            self._env.np_random,
+        )
 
         pacman_action = self._pacman_action()
         _, _, terminated, truncated, info = self._env.step(

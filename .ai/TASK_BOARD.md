@@ -152,7 +152,7 @@ All requested optional experiment extensions are complete.
 - [x] Regenerate medium robustness matrix and analysis plots after retraining
 - [x] Correct medium alternating result seed labels and support UTF-8 BOM CSV input
 
-Final verification: `python -m pytest tests\ -q` — 515 passed.
+Final verification: `python -m pytest tests\ -q` — 540 passed.
 
 ## High-Budget Demo Refresh
 
@@ -162,6 +162,19 @@ Final verification: `python -m pytest tests\ -q` — 515 passed.
 - [x] Evaluate selected final models over 30 episodes per matrix cell, in parallel
 - [x] Regenerate the co-evolution dashboard and report confidence intervals and maze clears
 - [x] Verify the baseline hash and run full regression tests (515 passed)
+
+## Endgame Navigation Variants
+
+- [x] Add opt-in nearest-pellet and previous-action observation features
+- [x] Add disabled-by-default BFS progress and recent-cell reward shaping
+- [x] Add isolated 300,000-step feature/shaping experiment runner and CSV summaries
+- [x] Add regression coverage while preserving baseline defaults and model paths (540 tests pass)
+- [x] Separate endgame output folders by seed and step count with optional `--output-tag`
+- [x] Add opt-in nearest-hostile-ghost observation and proximity reward to `features_shaping_ghost`
+- [x] Review saved deterministic/stochastic endgame variant results without retraining
+- [x] Generate the 30-episode endgame robustness matrix and demo-model diagnostic plots
+- [x] Reduce default rendered playback speed for easier-to-follow gameplay
+- [x] Match learned-ghost evaluation to shared training turns and handle wall-directed actions
 
 ---
 
