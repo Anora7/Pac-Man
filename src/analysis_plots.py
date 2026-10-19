@@ -288,8 +288,16 @@ def plot_alternating_dashboard(
             label=f"Seed {seed}: Pac-Man mean pellets",
         )
         right.plot(
-            rounds,
-            [float(row["ghost_catch_rate"]) for row in seed_rows],
+            [
+                int(row["round"])
+                for row in seed_rows
+                if int(row["round"]) > 0
+            ],
+            [
+                float(row["ghost_catch_rate"])
+                for row in seed_rows
+                if int(row["round"]) > 0
+            ],
             marker=marker,
             linestyle="--",
             label=f"Seed {seed}: Ghost catch rate",
@@ -478,13 +486,36 @@ def run_medium_analysis(episodes: int = 20) -> list[Path]:
     return outputs
 
 
+def run_priority_analysis() -> list[Path]:
+    """Plot the full-round dashboard for the 300k alternating experiments."""
+    results_path = Path("results/priority_300k/alternating_rounds.csv")
+    if not results_path.is_file():
+        raise FileNotFoundError(
+            f"Missing priority alternating results: {results_path}"
+        )
+    output = plot_alternating_dashboard(
+        results_path,
+        AnalysisPlotConfig(
+            plots_dir=Path("plots/experiments/priority_300k"),
+        ),
+    )
+    print(f"Analysis plot: {output}")
+    return [output]
+
+
 def main() -> None:
-    """Run analysis plots for the baseline and medium experiment outputs."""
+    """Run analysis plots for the selected experiment outputs."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    modes = parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument(
         "--medium",
         action="store_true",
         help="Use medium PPO checkpoints, Monitor logs, and output directories.",
+    )
+    modes.add_argument(
+        "--priority",
+        action="store_true",
+        help="Plot the 300k-step alternating results.",
     )
     parser.add_argument(
         "--episodes",
@@ -493,11 +524,12 @@ def main() -> None:
         help="Evaluation and visitation episodes per model (default: 20).",
     )
     args = parser.parse_args()
-    if not args.medium:
-        parser.error("select --medium to run analysis on medium experiment outputs.")
-    if args.episodes < 1:
+    if args.medium and args.episodes < 1:
         parser.error("--episodes must be at least 1.")
-    run_medium_analysis(args.episodes)
+    if args.medium:
+        run_medium_analysis(args.episodes)
+    else:
+        run_priority_analysis()
 
 
 if __name__ == "__main__":

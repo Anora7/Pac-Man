@@ -28,12 +28,11 @@ experiment (evaluation adds overhead). The medium outputs are isolated under
 `results\medium\`, and `plots\experiments\medium\`; they do not replace full
 or quick-run artifacts or the baseline checkpoints.
 
-Evaluate the baseline against Pac-Man checkpoints from only the medium
-experiment tree: final per-round alternating checkpoints (including round 00)
-and final curriculum checkpoints, excluding callback and timestep archives.
-The learned-ghost column uses the newest medium alternating ghost checkpoint.
-The default is 10 episodes per model/ghost cell; override it with
-`--episodes`:
+Evaluate the baseline against only the selected experiment tree: one highest-
+numbered alternating Pac-Man checkpoint per seed and final curriculum
+checkpoints, excluding callback and timestep archives. The learned-ghost
+column uses the newest alternating ghost checkpoint in that experiment tree.
+The default is 10 episodes per model/ghost cell; override it with `--episodes`:
 
 ```powershell
 python .\src\evaluate_matrix.py --medium --episodes 10
@@ -41,6 +40,21 @@ python .\src\evaluate_matrix.py --medium --episodes 10
 
 The matrix is written to `results\medium\robustness_matrix.csv` and
 `plots\experiments\medium\robustness_matrix.png`.
+
+For the high-budget refresh, run the final-only matrix after training. It
+evaluates the baseline, the final model per seed for each selected experiment,
+and curriculum finals over 30 episodes per cell, in up to three worker
+processes:
+
+```powershell
+python .\src\evaluate_matrix.py --priority --episodes 30
+python .\src\analysis_plots.py --priority
+```
+
+The priority outputs are isolated under `results\priority_300k\` and
+`plots\experiments\priority_300k\`. The reward, success, and pellet matrix
+figures use wider layouts and smaller labels so model names and negative
+values remain visible.
 
 Generate diagnostic plots comparing the baseline against the medium PPO
 checkpoint, with learning curves from both medium PPO Monitor logs:
@@ -99,6 +113,30 @@ rate.
 `models\experiments\alternating\seed_<seed>\`; Monitor logs are under
 `logs\experiments\alternating\`; round evaluations are in
 `results\alternating_rounds.csv`.
+
+The higher-budget refresh uses `src/run_priority_experiments.py`. Its
+alternating task launches seeds 42, 43, and 44 as separate processes (at most
+three concurrently), trains four 100,000-step rounds per side, and copies the
+baseline into a new round-local Pac-Man initialization before each Pac-Man
+round. The opponent pool remains enabled. Outputs are under the
+`priority_300k` model, log, and result directories; the baseline archive is
+read-only. The comparison task similarly launches one process per PPO/DQN and
+seed, trains 300,000 steps, evaluates 30 distinct episode seeds, and reports
+95% confidence intervals across seed-level metrics:
+
+```powershell
+python .\src\run_priority_experiments.py --task comparison
+python .\src\run_priority_experiments.py --task alternating
+```
+
+The ghost-direction-only PPO experiment is trained and evaluated with:
+
+```powershell
+python .\src\train_ghost_direction.py --steps 300000 --episodes 30 --seed 42
+```
+
+It writes to `models\experiments\ghost_direction_ppo_300k\`, with evaluation
+metrics in `results\priority_300k\ghost_direction_comparison.csv`.
 
 **Limitations.** A ghost can overfit to a single Pac-Man snapshot; the
 configurable opponent pool mixes the newest and earlier checkpoints to reduce
@@ -333,9 +371,11 @@ means the critic expects lower future return in that state. The map is only as
 reliable as the policy's training distribution and critic calibration.
 
 **Ghost/Pac-Man co-evolution.** The dashboard uses separate y-axes for
-Pac-Man maze-clear success and ghost catch rate across alternating rounds.
-Opposing trends can indicate competitive adaptation; both can fluctuate, and
-one quick seed cannot establish a general learning trend.
+Pac-Man mean pellets and ghost catch rate across alternating rounds. Round
+zero remains on the Pac-Man pellet line but is excluded from the ghost catch
+line because no trained ghost exists yet. Opposing trends can indicate
+competitive adaptation; both can fluctuate, and one quick seed cannot
+establish a general learning trend.
 
 **Visitation and outcomes.** Visitation maps count occupied cells and caught
 locations; they are conditional on the tested policy, ghost type, and episode

@@ -144,6 +144,27 @@ Owns opt-in staged PPO training with configurable ghost counts. It reuses
 `PacmanEnvironment`, Stable-Baselines3 callbacks, and shared seed/Monitor
 utilities; it does not change the baseline environment defaults.
 
+## train_ghost_direction.py
+
+Owns the isolated ghost-direction observation experiment, including its
+observation metadata, training output paths, and paired baseline evaluation.
+It uses the shared PPO trainer and evaluator; it does not change defaults or
+write to the baseline archive.
+
+## run_priority_experiments.py
+
+Owns process-level orchestration for the 300k comparison and multi-seed
+alternating refresh. Each worker has seed-specific model, log, and structured
+result outputs; the parent limits concurrency and aggregates results.
+
+## evaluate_matrix.py
+
+Owns final-checkpoint discovery, algorithm-aware PPO/DQN model loading,
+policy/model evaluation, CSV output, and robustness heatmaps. The priority
+profile evaluates selected final models in separate CPU worker processes,
+excludes intermediate checkpoints, and qualifies labels with their experiment
+source to keep matrix rows unique.
+
 ---
 
 ## renderer.py

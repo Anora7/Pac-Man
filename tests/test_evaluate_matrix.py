@@ -55,6 +55,8 @@ def test_medium_discovery_limits_checkpoints_and_uses_medium_ghost(
 
     round_zero = medium_pacman.with_name("round_00_pacman.zip")
     round_zero.touch()
+    round_one = medium_pacman.with_name("round_01_pacman.zip")
+    round_one.touch()
     callbacks_model = medium_pacman.parent / "round_04_pacman_callbacks" / "round_04_pacman.zip"
     callbacks_model.parent.mkdir()
     callbacks_model.touch()
@@ -89,9 +91,10 @@ def test_medium_discovery_limits_checkpoints_and_uses_medium_ghost(
     assert {entry.path for entry in entries} == {
         baseline,
         medium_pacman,
-        round_zero,
         curriculum_final,
     }
+    assert round_zero not in {entry.path for entry in entries}
+    assert round_one not in {entry.path for entry in entries}
     assert callbacks_model not in {entry.path for entry in entries}
     assert steps_model not in {entry.path for entry in entries}
     assert wrong_round_name not in {entry.path for entry in entries}
@@ -127,3 +130,81 @@ def test_matrix_writes_csv_and_annotated_plot(tmp_path: Path) -> None:
     with csv_path.open(encoding="utf-8", newline="") as source:
         assert next(csv.DictReader(source))["model"] == "baseline"
     assert plot_path.exists()
+
+
+def test_matrix_csv_preserves_negative_reward_sign(tmp_path: Path) -> None:
+    path = tmp_path / "matrix.csv"
+    _write_matrix_csv(
+        path,
+        [{
+            "model": "curriculum-seed_43",
+            "ghost_type": "rule",
+            "mean_reward": -5925.0,
+            "success_rate": 0.0,
+            "mean_pellets": 5.0,
+        }],
+    )
+    with path.open(encoding="utf-8", newline="") as source:
+        row = next(csv.DictReader(source))
+    assert float(row["mean_reward"]) == -5925.0
+
+
+def test_discovery_keeps_only_latest_round_per_seed(tmp_path: Path) -> None:
+    models_dir = tmp_path / "models"
+    experiment_dir = models_dir / "experiments" / "priority_300k"
+    baseline = models_dir / "best_model.zip"
+    baseline.parent.mkdir(parents=True)
+    baseline.touch()
+    paths = []
+    for round_number in (0, 1, 4):
+        path = (
+            experiment_dir
+            / "alternating"
+            / "seed_42"
+            / f"round_{round_number:02d}_pacman.zip"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+        paths.append(path)
+    final_algorithm_model = (
+        experiment_dir
+        / "algorithm_comparison"
+        / "ppo"
+        / "seed_42"
+        / "final_model.zip"
+    )
+    final_algorithm_model.parent.mkdir(parents=True)
+    final_algorithm_model.touch()
+    final_dqn_model = (
+        experiment_dir
+        / "algorithm_comparison"
+        / "dqn"
+        / "seed_42"
+        / "final_model.zip"
+    )
+    final_dqn_model.parent.mkdir(parents=True)
+    final_dqn_model.touch()
+    ghost_direction_dir = (
+        models_dir / "experiments" / "ghost_direction_ppo_300k"
+    )
+    ghost_direction_dir.mkdir(parents=True)
+    ghost_direction = ghost_direction_dir / "final_model.zip"
+    ghost_direction.touch()
+
+    entries = discover_models(
+        models_dir,
+        experiment_dir,
+        (ghost_direction_dir,),
+    )
+    assert {entry.path for entry in entries} == {
+        baseline,
+        paths[-1],
+        final_algorithm_model,
+        final_dqn_model,
+        ghost_direction,
+    }
+    assert next(entry for entry in entries if entry.path == final_dqn_model).algorithm == "dqn"
+    assert next(
+        entry for entry in entries if entry.path == final_algorithm_model
+    ).algorithm == "ppo"
+    assert len({entry.name for entry in entries}) == len(entries)

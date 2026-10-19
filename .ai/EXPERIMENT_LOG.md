@@ -176,6 +176,71 @@ covered 11 Pac-Man models and five ghost policies (55 cells, 10 episodes per
 cell). The analysis dashboard includes rounds 0–3 for each seed and plots
 mean Pac-Man pellets alongside ghost catch rate.
 
+## Priority 300k Refresh — Ghost-Direction PPO
+
+Completed 2026-10-18. A PPO model was trained for 300,000 steps with
+`ObservationConfig(include_ghost_direction=True)` (733 observation values),
+seed 42, and the existing CPU hyperparameters. The final model is isolated
+under `models/experiments/ghost_direction_ppo_300k/`. Baseline evaluation
+used episode seeds 42,000–42,029; the trained model used 42,030–42,059.
+Each model was evaluated against rule-based ghosts for 30 episodes.
+
+| Model | Mean pellets (95% CI) | Survival steps (95% CI) | Success |
+|---|---:|---:|---:|
+| Baseline | 44.67 [40.65, 48.68] | 82.9 [58.42, 107.38] | 0% |
+| Ghost-direction PPO | 32.03 [28.47, 35.59] | 56.0 [44.31, 67.69] | 0% |
+
+No maze clears occurred in either evaluation set. These measurements do not
+show improvement over baseline; the new observation variant remains an
+experimental model rather than a replacement.
+
+## Priority 300k Refresh — PPO vs DQN
+
+Completed 2026-10-18. PPO and DQN were each trained for 300,000 steps at
+seeds 42, 43, and 44. Each algorithm/seed pair ran in its own process, with
+at most three workers active. Each trained model was evaluated for 30
+episodes with distinct reproducible episode seeds. Confidence intervals below
+are 95% Student-t intervals across the three seed-level means.
+
+| Algorithm | Mean reward (95% CI) | Mean pellets (95% CI) | Survival steps (95% CI) | Success |
+|---|---:|---:|---:|---:|
+| PPO | 360.74 [300.25, 421.24] | 49.51 [46.80, 52.22] | 74.09 [45.05, 103.13] | 0% |
+| DQN | 30.36 [-107.36, 168.07] | 19.69 [17.84, 21.54] | 43.03 [19.57, 66.50] | 0% |
+
+No maze clears occurred in the 180 final comparison episodes. PPO had higher
+mean reward, pellet count, and survival in this run; the three-seed sample
+remains limited.
+
+## Priority 300k Refresh — Alternating, Robustness, and Final Verification
+
+Completed 2026-10-19. Four 100,000-step Pac-Man/ghost rounds ran for seeds 42,
+43, and 44. Every Pac-Man round-start archive was verified byte-for-byte
+against `models/best_model.zip`; the baseline archive hash remained
+`D04661692A40D81D5B5EA186B6257231D8AC283B2072266D6C2A923E65BC644F`.
+The final-round Pac-Man evaluations collected 44, 8, and 8 mean pellets for
+seeds 42, 43, and 44 respectively, with 1,000 mean steps and 0% clears for
+each seed.
+
+The final learned ghosts were evaluated against baseline Pac-Man for 30
+episodes each. Rule-based ghosts caught the baseline in 100% of episodes;
+learned ghost catch rates were 16.7% (seed 42), 83.3% (seed 43), and 90.0%
+(seed 44).
+
+The final-only priority matrix evaluated 19 uniquely labeled Pac-Man models
+against five ghost policies (95 cells, 30 episodes per cell). It covers the
+baseline, priority experiment finals, ghost-direction PPO, and medium
+experiment finals/curriculum models. The latest priority learned ghost was
+seed 42 round 4. No matrix cell cleared the maze. Curriculum seed 43 collected
+5 pellets in all five cells; its mean rewards remained negative
+(-1,149.8 to -5,925), confirming the CSV writer preserves reward signs rather
+than producing the earlier suspected positive-reward artifact.
+
+The matrix now loads PPO and DQN archives with their matching Stable-Baselines3
+classes and uses experiment-qualified row labels so priority and medium models
+cannot overwrite one another in the heatmap. Priority matrix and alternating
+dashboard plots were regenerated. Final validation:
+`python -m pytest tests\ -q` — 515 passed.
+
 # Experiment Guidelines
 # Experiment Guidelines
 

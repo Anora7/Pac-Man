@@ -131,8 +131,15 @@ def _run_seed(
             config.opponent_pool_latest_probability,
         )
         next_pacman_path = seed_models / f"round_{round_index:02d}_pacman.zip"
+        pacman_initial_path = pacman_path
+        if config.restart_pacman_each_round:
+            pacman_initial_path = _copy_baseline_for_round(
+                config,
+                seed_models,
+                round_index,
+            )
         _train_pacman(
-            pacman_path,
+            pacman_initial_path,
             ghost_opponent,
             next_pacman_path,
             seed_logs / f"round_{round_index:02d}_pacman",
@@ -177,12 +184,24 @@ def _prepare_round_zero(
     models_dir.mkdir(parents=True, exist_ok=True)
     output_path = models_dir / "round_00_pacman.zip"
     initial = config.initial_pacman_model_path
+    if config.restart_pacman_each_round and (
+        initial is None or not initial.is_file()
+    ):
+        raise FileNotFoundError(
+            "Baseline initialization is required for every Pac-Man round, but "
+            f"the configured checkpoint is unavailable: {initial}"
+        )
     if initial is not None and initial.exists():
         initial_observation_config = load_observation_config(initial)
         if initial_observation_config == ObservationConfig():
             shutil.copy2(initial, output_path)
             save_observation_config(output_path, initial_observation_config)
             return output_path
+        if config.restart_pacman_each_round:
+            raise ValueError(
+                "Baseline initialization requires the baseline observation "
+                f"configuration; found {initial_observation_config} at {initial}."
+            )
         print(
             "Initial Pac-Man checkpoint uses optional observations; "
             "training round zero from scratch with baseline observations."
@@ -200,6 +219,30 @@ def _prepare_round_zero(
         ),
     )
     return output_path
+
+
+def _copy_baseline_for_round(
+    config: AlternatingConfig,
+    models_dir: Path,
+    round_index: int,
+) -> Path:
+    """Create a round-local copy of the baseline before training Pac-Man."""
+    baseline = config.initial_pacman_model_path
+    if baseline is None or not baseline.is_file():
+        raise FileNotFoundError(
+            f"Cannot initialize Pac-Man round {round_index} without the baseline: "
+            f"{baseline}"
+        )
+    observation_config = load_observation_config(baseline)
+    if observation_config != ObservationConfig():
+        raise ValueError(
+            "Baseline initialization requires the baseline observation "
+            f"configuration; found {observation_config} at {baseline}."
+        )
+    target = models_dir / f"round_{round_index:02d}_pacman_start.zip"
+    shutil.copy2(baseline, target)
+    save_observation_config(target, observation_config)
+    return target
 
 
 def _train_ghost(
@@ -462,9 +505,10 @@ def _compare_final_ghosts_to_baseline(config: AlternatingConfig) -> None:
         f"catch rate {rule_catch_rate:.1%}"
     )
 
-    comparison_path = config.results_path.with_name(
-        "baseline_ghost_catch_rates.csv"
-    )
+    comparison_name = "baseline_ghost_catch_rates.csv"
+    if len(config.seeds) == 1:
+        comparison_name = f"baseline_ghost_catch_rates_seed_{config.seeds[0]}.csv"
+    comparison_path = config.results_path.with_name(comparison_name)
     comparison_path.parent.mkdir(parents=True, exist_ok=True)
     with comparison_path.open("w", newline="", encoding="utf-8") as output:
         writer = csv.DictWriter(

@@ -1,0 +1,6 @@
+seed,round,pacman_mean_reward,pacman_success_rate,pacman_mean_pellets,pacman_survival_steps,ghost_catch_rate
+42,0,319.6,0.0,46.733333333333334,79.9,0.0
+42,1,-5315.0,0.0,40.0,1000.0,0.7
+42,2,-960.0,0.0,4.0,1000.0,0.0
+42,3,-480.0,0.0,44.0,1000.0,0.0
+42,4,-480.0,0.0,44.0,1000.0,0.0

@@ -113,6 +113,68 @@ def test_alternating_rows_keep_the_training_seed(
     assert [record["seed"] for record in records] == [42, 42]
 
 
+def test_restart_mode_initializes_each_pacman_round_from_baseline_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = tmp_path / "best_model.zip"
+    baseline.write_bytes(b"immutable-baseline")
+    original_hash = hashlib.sha256(baseline.read_bytes()).hexdigest()
+    config = AlternatingConfig(
+        n_rounds=2,
+        seeds=(42,),
+        initial_pacman_model_path=baseline,
+        restart_pacman_each_round=True,
+        models_dir=tmp_path / "models",
+        logs_dir=tmp_path / "logs",
+        results_path=tmp_path / "results.csv",
+        evaluation_episodes=1,
+    )
+    monkeypatch.setattr(train_alternating, "_train_ghost", lambda *args: None)
+    pacman_starts: list[Path | None] = []
+
+    def train_pacman(initial_path, *_args):
+        pacman_starts.append(initial_path)
+
+    monkeypatch.setattr(train_alternating, "_train_pacman", train_pacman)
+    monkeypatch.setattr(
+        train_alternating,
+        "_evaluate_pacman",
+        lambda *args, **kwargs: {
+            "seed": kwargs.get("seed", 42),
+            "round": kwargs["round_index"],
+            "pacman_mean_reward": 0.0,
+            "pacman_success_rate": 0.0,
+            "pacman_mean_pellets": 1.0,
+            "pacman_survival_steps": 1.0,
+            "ghost_catch_rate": 0.0,
+        },
+    )
+    monkeypatch.setattr(train_alternating, "_evaluate_ghost", lambda *args: 0.5)
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=RESULT_COLUMNS)
+
+    _run_seed(42, config, writer, output)
+
+    assert len(pacman_starts) == 2
+    assert all(path is not None for path in pacman_starts)
+    assert all(path.read_bytes() == baseline.read_bytes() for path in pacman_starts)
+    assert hashlib.sha256(baseline.read_bytes()).hexdigest() == original_hash
+
+
+def test_restart_mode_requires_baseline_checkpoint(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="Baseline initialization is required"):
+        _prepare_round_zero(
+            AlternatingConfig(
+                initial_pacman_model_path=tmp_path / "missing.zip",
+                restart_pacman_each_round=True,
+            ),
+            seed=42,
+            models_dir=tmp_path / "models",
+            logs_dir=tmp_path / "logs",
+        )
+
+
 def test_opponent_pool_sampler_can_select_latest_or_older() -> None:
     pool = ["old", "latest"]
     assert _sample_opponent(pool, random.Random(2), 1.0) == "latest"

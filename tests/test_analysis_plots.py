@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import matplotlib.pyplot as plt
 
+import analysis_plots
 from analysis_plots import (
     _save_heatmap,
     plot_alternating_dashboard,
@@ -25,7 +27,10 @@ def test_heatmap_saves_file_and_masks_wall_cells(tmp_path: Path) -> None:
     assert output.exists()
 
 
-def test_alternating_dashboard_reads_results_csv(tmp_path: Path) -> None:
+def test_alternating_dashboard_reads_results_csv_and_omits_round_zero_catch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     csv_path = tmp_path / "rounds.csv"
     csv_path.write_text(
         "\ufeffseed,round,pacman_success_rate,pacman_mean_pellets,ghost_catch_rate\n"
@@ -39,11 +44,19 @@ def test_alternating_dashboard_reads_results_csv(tmp_path: Path) -> None:
         "43,3,0.0,8.0,0.7\n",
         encoding="utf-8",
     )
+    figures = []
+    close_figure = plt.close
+    monkeypatch.setattr(analysis_plots.plt, "close", lambda figure: figures.append(figure))
     output = plot_alternating_dashboard(
         csv_path,
         AnalysisPlotConfig(plots_dir=tmp_path / "plots"),
     )
     assert output.exists()
+    figure = figures.pop()
+    ghost_lines = figure.axes[1].lines
+    assert len(ghost_lines) == 2
+    assert all(list(line.get_xdata()) == [1, 2, 3] for line in ghost_lines)
+    close_figure(figure)
 
 
 def test_outcome_breakdown_writes_stacked_chart(tmp_path: Path) -> None:

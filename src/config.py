@@ -246,6 +246,7 @@ class AlternatingConfig:
     ghost_steps_per_round: int = 50_000
     seeds: tuple[int, ...] = (42, 43, 44)
     initial_pacman_model_path: Path | None = Path("models/best_model.zip")
+    restart_pacman_each_round: bool = False
     models_dir: Path = Path("models/experiments/alternating")
     logs_dir: Path = Path("logs/experiments/alternating")
     results_path: Path = Path("results/alternating_rounds.csv")
@@ -278,6 +279,7 @@ class RobustnessConfig:
 
     models_dir: Path = Path("models")
     experiment_models_dir: Path | None = None
+    additional_experiment_models_dirs: tuple[Path, ...] = ()
     episodes: int = 10
     max_steps: int = MAX_STEPS
     seed: int = DEFAULT_SEED

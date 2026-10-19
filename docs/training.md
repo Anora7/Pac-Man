@@ -125,3 +125,16 @@ same setting to both environments and writes a `.observation.json` sidecar
 next to final and best model archives. Keep these model and output paths under
 `models/experiments/` and `logs/experiments/` to avoid replacing baseline
 checkpoints.
+
+The dedicated 300,000-step ghost-direction PPO run and its 30-episode
+baseline comparison are available from the repository root:
+
+```powershell
+python .\src\train_ghost_direction.py --steps 300000 --episodes 30 --seed 42
+```
+
+The script enables `ObservationConfig(include_ghost_direction=True)`, stores
+the model at `models\experiments\ghost_direction_ppo_300k\final_model.zip`,
+and writes per-model metrics with 95% episode-level confidence intervals to
+`results\priority_300k\ghost_direction_comparison.csv`. Its evaluation seeds
+are disjoint between the baseline and trained model.

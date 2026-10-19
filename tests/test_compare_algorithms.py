@@ -14,6 +14,7 @@ from compare_algorithms import (
     _medium_config,
     _write_comparison_csv,
     _write_report,
+    priority_config,
 )
 from config import DQNConfig, MEDIUM_TIMESTEPS
 
@@ -27,6 +28,44 @@ def test_medium_comparison_config_has_two_seeds_and_isolated_outputs() -> None:
     assert "medium" in str(config.models_dir)
     assert "medium" in str(config.results_path)
     assert "medium" in str(config.plots_dir)
+
+
+def test_priority_comparison_uses_three_seeds_and_300k_steps() -> None:
+    config = priority_config()
+    assert config.seeds == (42, 43, 44)
+    assert config.total_timesteps == 300_000
+    assert config.evaluation_episodes == 30
+    assert "priority_300k" in str(config.models_dir)
+
+
+def test_worker_can_train_only_one_selected_algorithm(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = AlgorithmComparisonConfig(
+        seeds=(42,),
+        total_timesteps=32,
+        evaluation_episodes=30,
+        models_dir=tmp_path / "models",
+        logs_dir=tmp_path / "logs",
+    )
+    monkeypatch.setattr(compare_algorithms, "train", lambda training_config: object())
+    monkeypatch.setattr(
+        compare_algorithms,
+        "evaluate",
+        lambda evaluation_config, model: SimpleNamespace(
+            mean_reward=1.0,
+            std_reward=0.5,
+            success_rate=0.0,
+            mean_pellets_collected=2.0,
+            mean_steps=3.0,
+        ),
+    )
+
+    records = _run_seed(42, config, algorithms=("ppo",))
+
+    assert len(records) == 1
+    assert records[0]["algorithm"] == "PPO"
 
 
 def test_eval_only_loads_saved_models_and_never_trains(

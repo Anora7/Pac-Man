@@ -174,13 +174,10 @@ Maze layout: 12×12 static grid with 67 regular pellets, 2 power pellets, 2 ghos
 
 All 13 steps of the opt-in extension plan are complete. The baseline
 723-element observation, original reward values, and rule-based ghost policy
-remain the defaults. `run_all_experiments.py --quick` completed end to end and
-generated the extension CSVs, reports, and plots. A two-seed `--medium`
-profile now provides bounded budgets and independent output directories for
-alternating, curriculum, PPO-vs-DQN, and selected reward-ablation runs. Full
-and quick profiles remain unchanged. Robustness-matrix discovery now includes
-only the baseline and final medium alternating/curriculum checkpoints, reports
-per-cell progress, and defaults to 10 episodes.
+remain the defaults. The high-budget demo refresh is complete: ghost-direction
+PPO and PPO/DQN comparison runs finished; four-round alternating runs finished
+for seeds 42, 43, and 44; the final-only matrix and priority dashboard were
+regenerated; and the full test suite passed (515 tests).
 
 The medium-results refresh is complete. PPO-vs-DQN and reward ablation were
 re-evaluated from saved models over 30 episodes per model with distinct episode
@@ -195,7 +192,9 @@ per cell), and medium analysis plots were regenerated.
 
 # Upcoming Milestones
 
-No additional milestone is currently in progress.
+No priority-refresh milestones remain in progress. The final robustness
+matrix contains 19 uniquely labeled models × five ghost policies, with 30
+episodes per cell. No evaluated game cleared the maze.
 
 ---
 
@@ -214,6 +213,11 @@ Current known risks:
 
 | Date | Task | Status |
 |------|------|--------|
+| 2026-10-18 | Train ghost-direction PPO for 300k steps and evaluate 30 episodes per model | ✅ |
+| 2026-10-18 | Train PPO/DQN for 300k steps across seeds 42, 43, and 44 | ✅ |
+| 2026-10-19 | Run four-round 100k-per-side alternating experiments for seeds 42–44 | ✅ |
+| 2026-10-19 | Evaluate 19 final models against five policies for 30 episodes per cell | ✅ |
+| 2026-10-19 | Regenerate priority dashboard and verify baseline hash/full test suite | ✅ |
 | 2026-10-18 | Refresh medium evaluations, alternating training, robustness matrix, and analysis plots | ✅ |
 | 2026-10-18 | Restrict robustness matrix to final medium checkpoints and add progress output | ✅ |
 | 2026-10-16 | Add isolated medium CPU budgets for experiment workflows | ✅ |
@@ -224,8 +228,9 @@ Current known risks:
 
 # Next Immediate Task
 
-None. Medium evaluation, training, matrix, plots, and regression tests are
-complete.
+Copy the requested deliverables from `models/experiments/`,
+`results/priority_300k/`, and `plots/experiments/priority_300k/` to a safe
+location because those generated outputs are gitignored.
 
 ---
 

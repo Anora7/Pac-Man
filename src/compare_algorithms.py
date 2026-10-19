@@ -6,11 +6,12 @@ import argparse
 import csv
 from dataclasses import dataclass, replace
 from pathlib import Path
-from statistics import mean, stdev
+from statistics import mean
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from stable_baselines3 import DQN, PPO
 
@@ -32,6 +33,7 @@ from experiment_utils import (
     aggregate_metrics,
     plot_monitor_curves,
     run_across_seeds,
+    summarize_metric,
 )
 from train import TrainingConfig, train
 from train_dqn import train_dqn
@@ -67,6 +69,10 @@ CSV_COLUMNS = (
     "reward_ci_high",
     "success_ci_low",
     "success_ci_high",
+    "pellets_ci_low",
+    "pellets_ci_high",
+    "steps_ci_low",
+    "steps_ci_high",
 )
 
 
@@ -115,10 +121,13 @@ def _run_seed(
     config: AlgorithmComparisonConfig,
     *,
     eval_only: bool = False,
+    algorithms: tuple[str, ...] = ("ppo", "dqn"),
 ) -> list[dict[str, str | int | float]]:
-    """Run the two algorithms for one seed and match their test episodes."""
+    """Run selected algorithms for one seed with a matched episode seed set."""
     result_rows: list[dict[str, str | int | float]] = []
-    for algorithm in ("ppo", "dqn"):
+    if not algorithms or not set(algorithms).issubset({"ppo", "dqn"}):
+        raise ValueError("algorithms must select PPO and/or DQN.")
+    for algorithm in algorithms:
         model_dir = config.models_dir / algorithm / f"seed_{seed}"
         log_dir = config.logs_dir / algorithm / f"seed_{seed}"
         model_path = model_dir / "final_model.zip"
@@ -209,6 +218,10 @@ def _write_comparison_csv(
                     "reward_ci_high": "",
                     "success_ci_low": "",
                     "success_ci_high": "",
+                    "pellets_ci_low": "",
+                    "pellets_ci_high": "",
+                    "steps_ci_low": "",
+                    "steps_ci_high": "",
                 }
                 for row in selected
             )
@@ -229,6 +242,10 @@ def _write_comparison_csv(
                 "reward_ci_high": summary["mean_reward"].confidence_interval[1],
                 "success_ci_low": summary["success_rate"].confidence_interval[0],
                 "success_ci_high": summary["success_rate"].confidence_interval[1],
+                "pellets_ci_low": summary["mean_pellets"].confidence_interval[0],
+                "pellets_ci_high": summary["mean_pellets"].confidence_interval[1],
+                "steps_ci_low": summary["mean_steps"].confidence_interval[0],
+                "steps_ci_high": summary["mean_steps"].confidence_interval[1],
             })
 
 
@@ -256,25 +273,25 @@ def _write_comparison_plots(
             title=f"{algorithm.upper()} success rate across seeds",
             y_label="Success (0/1)",
         )
-    figure, axes = plt.subplots(1, 2, figsize=(11, 5))
+    figure, axes = plt.subplots(1, 3, figsize=(15, 5))
     for axis, metric, title, label in (
-        (axes[0], "mean_reward", "Final mean reward", "Reward"),
-        (axes[1], "success_rate", "Final success rate", "Success rate"),
+        (axes[0], "mean_reward", "Mean reward", "Reward"),
+        (axes[1], "mean_pellets", "Mean pellets", "Pellets"),
+        (axes[2], "mean_steps", "Survival steps", "Steps"),
     ):
         values = [
             [float(row[metric]) for row in records if row["algorithm"] == algorithm]
             for algorithm in ("PPO", "DQN")
         ]
-        means = [mean(group) for group in values]
-        deviations = [
-            stdev(group) if len(group) > 1 else 0.0
-            for group in values
-        ]
-        axis.bar(("PPO", "DQN"), means, yerr=deviations, capsize=5)
+        summaries = [summarize_metric(group) for group in values]
+        means = [summary.mean for summary in summaries]
+        errors = np.asarray([
+            [summary.mean - summary.confidence_interval[0] for summary in summaries],
+            [summary.confidence_interval[1] - summary.mean for summary in summaries],
+        ])
+        axis.bar(("PPO", "DQN"), means, yerr=errors, capsize=5)
         axis.set_title(title)
         axis.set_ylabel(label)
-        if metric == "success_rate":
-            axis.set_ylim(0.0, 1.0)
     config.plots_dir.mkdir(parents=True, exist_ok=True)
     figure.tight_layout()
     figure.savefig(
@@ -303,11 +320,27 @@ def _write_report(
     ]
     for algorithm in ("PPO", "DQN"):
         selected = [row for row in records if row["algorithm"] == algorithm]
+        lines.append(f"| {algorithm} | {mean(float(r['mean_reward']) for r in selected):.2f} "
+                     f"| {mean(float(r['success_rate']) for r in selected):.1%} "
+                     f"| {mean(float(r['mean_pellets']) for r in selected):.2f} "
+                     f"| {mean(float(r['mean_steps']) for r in selected):.1f} |")
+    lines.extend(["", "95% confidence intervals across seed-level means:", ""])
+    lines.append("| Algorithm | Reward | Pellets | Survival steps |")
+    lines.append("|---|---:|---:|---:|")
+    for algorithm in ("PPO", "DQN"):
+        selected = [row for row in records if row["algorithm"] == algorithm]
+        summaries = {
+            metric: summarize_metric([float(row[metric]) for row in selected])
+            for metric in ("mean_reward", "mean_pellets", "mean_steps")
+        }
+        format_ci = lambda summary: (
+            f"{summary.mean:.2f} [{summary.confidence_interval[0]:.2f}, "
+            f"{summary.confidence_interval[1]:.2f}]"
+        )
         lines.append(
-            f"| {algorithm} | {mean(float(r['mean_reward']) for r in selected):.2f} "
-            f"| {mean(float(r['success_rate']) for r in selected):.1%} "
-            f"| {mean(float(r['mean_pellets']) for r in selected):.2f} "
-            f"| {mean(float(r['mean_steps']) for r in selected):.1f} |"
+            f"| {algorithm} | {format_ci(summaries['mean_reward'])} "
+            f"| {format_ci(summaries['mean_pellets'])} "
+            f"| {format_ci(summaries['mean_steps'])} |"
         )
     lines.extend([
         "",
@@ -367,6 +400,29 @@ def _medium_config() -> AlgorithmComparisonConfig:
         report_path=Path("results/medium/algorithm_comparison_report.md"),
         plots_dir=Path("plots/experiments/medium/algorithm_comparison"),
         dqn_config=medium_dqn,
+    )
+
+
+def priority_config() -> AlgorithmComparisonConfig:
+    """Return the three-seed, 300k-step experiment configuration."""
+    steps = 300_000
+    dqn = replace(
+        DQNConfig(),
+        total_timesteps=steps,
+        eval_freq=steps // 2,
+        checkpoint_freq=steps,
+    )
+    return AlgorithmComparisonConfig(
+        seeds=(42, 43, 44),
+        total_timesteps=steps,
+        evaluation_episodes=30,
+        max_steps=MAX_STEPS,
+        models_dir=Path("models/experiments/priority_300k/algorithm_comparison"),
+        logs_dir=Path("logs/experiments/priority_300k/algorithm_comparison"),
+        results_path=Path("results/priority_300k/algorithm_comparison.csv"),
+        report_path=Path("results/priority_300k/algorithm_comparison_report.md"),
+        plots_dir=Path("plots/experiments/priority_300k/algorithm_comparison"),
+        dqn_config=dqn,
     )
 
 

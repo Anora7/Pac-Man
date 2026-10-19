@@ -152,7 +152,16 @@ All requested optional experiment extensions are complete.
 - [x] Regenerate medium robustness matrix and analysis plots after retraining
 - [x] Correct medium alternating result seed labels and support UTF-8 BOM CSV input
 
-Final verification: `python -m pytest tests\ -q` — 508 passed.
+Final verification: `python -m pytest tests\ -q` — 515 passed.
+
+## High-Budget Demo Refresh
+
+- [x] Train ghost-direction PPO for 300,000 steps and evaluate it against the baseline over 30 episodes
+- [x] Train PPO and DQN for 300,000 steps each across seeds 42, 43, and 44 using three concurrent workers
+- [x] Train four alternating rounds at 100,000 steps per side for seeds 42, 43, and 44, initializing each Pac-Man round from a baseline copy
+- [x] Evaluate selected final models over 30 episodes per matrix cell, in parallel
+- [x] Regenerate the co-evolution dashboard and report confidence intervals and maze clears
+- [x] Verify the baseline hash and run full regression tests (515 passed)
 
 ---
 
