@@ -55,9 +55,10 @@ GOOGLE_MAX_STEPS: int = 1500
 GOOGLE_POWER_MODE_DURATION: int = 30
 GOOGLE_EAT_GHOST_REWARD: float = 100.0
 
-GOOGLE_SCATTER_STEPS: int = 7
+GOOGLE_SCATTER_STEPS: int = 10
 GOOGLE_CHASE_STEPS: int = 20
-GOOGLE_GHOST_RELEASE_INTERVAL: int = 10
+GOOGLE_GHOST_RELEASE_INTERVAL: int = 30
+GOOGLE_GHOST_RELEASE_SCHEDULE: tuple[int, ...] = (0, 30, 60, 90)
 
 GOOGLE_CLYDE_CHASE_DISTANCE: int = 6
 GOOGLE_PINKY_LOOKAHEAD: int = 4
@@ -131,7 +132,7 @@ GOOGLE_REWARDS: RewardConfig = RewardConfig(
 # ---------------------------------------------------------------------------
 
 GOOGLE_CELL_SIZE: int = 36
-GOOGLE_FPS: int = 15
+GOOGLE_FPS: int = 6
 
 GOOGLE_COLOR_BACKGROUND: tuple[int, int, int] = (10, 10, 15)
 GOOGLE_COLOR_WALL: tuple[int, int, int] = (35, 45, 185)
@@ -175,8 +176,18 @@ class GoogleCurriculumStage:
     success_window: int = 20
 
 GOOGLE_CURRICULUM_STAGES: tuple[GoogleCurriculumStage, ...] = (
-    GoogleCurriculumStage(stage_id=1, active_ghosts=2, chase_strength=0.50, max_steps=100_000),
-    GoogleCurriculumStage(stage_id=2, active_ghosts=3, chase_strength=0.75, max_steps=150_000),
-    GoogleCurriculumStage(stage_id=3, active_ghosts=4, chase_strength=1.00, max_steps=250_000),
+    GoogleCurriculumStage(stage_id=1, active_ghosts=2, chase_strength=0.50, max_steps=150_000),
+    GoogleCurriculumStage(stage_id=2, active_ghosts=3, chase_strength=0.75, max_steps=100_000),
+    GoogleCurriculumStage(stage_id=3, active_ghosts=4, chase_strength=1.00, max_steps=50_000),
 )
+
+GOOGLE_STAGE_BUDGET_RATIOS: tuple[float, float, float] = (0.50, 0.33, 0.17)
+
+
+def calculate_stage_budgets(total_steps: int) -> tuple[int, int, int]:
+    """Split total training budget into 50% Stage 1, 33% Stage 2, and 17% Stage 3."""
+    stage1 = int(total_steps * GOOGLE_STAGE_BUDGET_RATIOS[0])
+    stage2 = int(total_steps * GOOGLE_STAGE_BUDGET_RATIOS[1])
+    stage3 = total_steps - stage1 - stage2
+    return (stage1, stage2, stage3)
 

@@ -57,6 +57,7 @@ class GoogleGhost:
     chase_strength: float = 1.0
     scatter_steps: int = GOOGLE_SCATTER_STEPS
     chase_steps: int = GOOGLE_CHASE_STEPS
+    phase_offset: int = 0
 
     # Runtime state
     position: Position = field(init=False)
@@ -124,7 +125,7 @@ class GoogleGhost:
 
         # Scatter / Chase cycle
         cycle = self.scatter_steps + self.chase_steps
-        phase = step_count % cycle
+        phase = (step_count + self.phase_offset) % cycle
         new_mode = GhostMode.SCATTER if phase < self.scatter_steps else GhostMode.CHASE
 
         if new_mode != self.current_mode and self.current_mode != GhostMode.IN_HOUSE:
@@ -161,13 +162,18 @@ class GoogleGhost:
             )
 
         elif self.identity == GhostIdentity.INKY:
-            # Cyan: Vector mirrored from Blinky around a pivot 2 tiles ahead of Pac-Man
-            pivot_row = pacman_pos.row + GOOGLE_INKY_LOOKAHEAD * delta[0]
-            pivot_col = pacman_pos.col + GOOGLE_INKY_LOOKAHEAD * delta[1]
-            b_pos = blinky_pos if blinky_pos is not None else pacman_pos
-            target_row = 2 * pivot_row - b_pos.row
-            target_col = 2 * pivot_col - b_pos.col
-            return Position(target_row, target_col)
+            # Cyan: flanker. Far away, cut off the opposite side of the board.
+            # Close up, chase directly.
+            dist = maze.bfs_shortest_path_distance(self.position, pacman_pos)
+            if dist is None:
+                dist = abs(self.position.row - pacman_pos.row) + abs(self.position.col - pacman_pos.col)
+            if dist > 8:
+                return Position(
+                    maze.height - 1 - pacman_pos.row,
+                    maze.width - 1 - pacman_pos.col,
+                )
+            return pacman_pos
+            
 
         elif self.identity == GhostIdentity.CLYDE:
             # Orange: Chases if distance > 6 tiles; otherwise retreats to scatter corner
@@ -249,7 +255,7 @@ class GoogleGhost:
             target = maze.closest_walkable(raw_target)
             target_distances = maze.distances_from(target)
 
-            best_action = actions[0]
+            best_actions: list[Action] = []
             min_dist = float("inf")
 
             for a in actions:
@@ -257,8 +263,10 @@ class GoogleGhost:
                 d = target_distances.get(neighbour, float("inf"))
                 if d < min_dist:
                     min_dist = d
-                    best_action = a
-            chosen = best_action
+                    best_actions = [a]
+                elif d == min_dist:
+                    best_actions.append(a)
+            chosen = best_actions[int(rng.integers(len(best_actions)))]
 
         self.last_action = chosen
         self.position = self.position + ACTION_DELTAS[chosen]
@@ -269,27 +277,46 @@ def create_google_ghosts(
     maze: GoogleMaze,
     chase_strength: float = 1.0,
     active_ghost_count: int = 4,
+    release_schedule: Sequence[int] | None = None,
+    release_interval: int | None = None,
 ) -> list[GoogleGhost]:
-    """Factory helper to instantiate the 4 Google ghosts."""
+    """Factory helper to instantiate the 4 Google ghosts with configurable release timing."""
     spawns = maze.ghost_spawns()
     if len(spawns) < 4:
         # Fallback if custom layout has fewer spawns
         spawns = spawns + [spawns[0]] * (4 - len(spawns))
 
+    if release_schedule is not None:
+        schedule = list(release_schedule)
+        while len(schedule) < 4:
+            schedule.append(schedule[-1] + 30)
+    elif release_interval is not None:
+        schedule = [i * release_interval for i in range(4)]
+    else:
+        from google_config import GOOGLE_GHOST_RELEASE_SCHEDULE
+        schedule = list(GOOGLE_GHOST_RELEASE_SCHEDULE)
+
     ghost_configs = [
-        (GhostIdentity.BLINKY, spawns[0], 0 * GOOGLE_GHOST_RELEASE_INTERVAL),
-        (GhostIdentity.PINKY, spawns[1], 1 * GOOGLE_GHOST_RELEASE_INTERVAL),
-        (GhostIdentity.INKY, spawns[2], 2 * GOOGLE_GHOST_RELEASE_INTERVAL),
-        (GhostIdentity.CLYDE, spawns[3], 3 * GOOGLE_GHOST_RELEASE_INTERVAL),
+        (GhostIdentity.BLINKY, spawns[0], schedule[0]),
+        (GhostIdentity.PINKY, spawns[1], schedule[1]),
+        (GhostIdentity.INKY, spawns[2], schedule[2]),
+        (GhostIdentity.CLYDE, spawns[3], schedule[3]),
     ]
 
+    personality_strength = {
+        GhostIdentity.BLINKY: 1.0,
+        GhostIdentity.PINKY: 0.95,
+        GhostIdentity.INKY: 0.90,
+        GhostIdentity.CLYDE: 0.85,
+    }
     ghosts = [
         GoogleGhost(
             identity=ident,
             spawn=sp,
             release_step=rel,
-            chase_strength=chase_strength,
+            chase_strength=chase_strength * personality_strength[ident],
+            phase_offset=i * 8,
         )
-        for ident, sp, rel in ghost_configs[:active_ghost_count]
+        for i, (ident, sp, rel) in enumerate(ghost_configs[:active_ghost_count])
     ]
     return ghosts

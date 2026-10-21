@@ -97,3 +97,21 @@ class TestGoogleMaze:
         dist = maze.bfs_shortest_path_distance(p1, p2)
         assert dist == 2
 
+    def test_fair_start_distance(self) -> None:
+        """Requirement 1: Pac-Man's start tile must be >= 8 BFS steps from every ghost start."""
+        maze = GoogleMaze()
+        assert maze.verify_fair_start(min_distance=8) is True
+        pacman_spawn = maze.pacman_spawn()
+        distances = maze.distances_from(pacman_spawn)
+        for g_spawn in maze.ghost_spawns():
+            assert distances[g_spawn] >= 8, f"Ghost at {g_spawn} is too close ({distances[g_spawn]} steps)!"
+
+    def test_cached_bfs_distances(self) -> None:
+        """Requirement 2: Precomputed distance maps cached on GoogleMaze."""
+        maze = GoogleMaze()
+        assert hasattr(maze, "_distance_maps")
+        assert len(maze._distance_maps) > 0
+        p = maze.pacman_spawn()
+        # Ensure distances_from returns cached dictionary directly
+        assert maze.distances_from(p) is maze._distance_maps[p]
+

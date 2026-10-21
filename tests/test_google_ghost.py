@@ -34,27 +34,33 @@ class TestGoogleGhost:
         assert ghosts[0].is_released is True
         assert ghosts[0].release_step == 0
 
-        # Others released at 10, 20, 30
+        # Others released at 30, 60, 90
         assert ghosts[1].identity == GhostIdentity.PINKY
         assert ghosts[1].is_released is False
-        assert ghosts[1].release_step == 10
+        assert ghosts[1].release_step == 30
 
         assert ghosts[2].identity == GhostIdentity.INKY
         assert ghosts[2].is_released is False
-        assert ghosts[2].release_step == 20
+        assert ghosts[2].release_step == 60
 
         assert ghosts[3].identity == GhostIdentity.CLYDE
         assert ghosts[3].is_released is False
-        assert ghosts[3].release_step == 30
+        assert ghosts[3].release_step == 90
 
         # Unreleased ghost does not move
         rng = np.random.default_rng(42)
         move = ghosts[1].move(maze, Position(12, 7), Action.UP, rng)
         assert move is None
 
-        # Updating step count releases Pinky at step 10
-        ghosts[1].update_mode(step_count=10, power_mode_active=False)
+        # Updating step count releases Pinky at step 30
+        ghosts[1].update_mode(step_count=30, power_mode_active=False)
         assert ghosts[1].is_released is True
+
+        # Test custom release schedule
+        custom_ghosts = create_google_ghosts(maze, release_schedule=(0, 15, 45, 75))
+        assert custom_ghosts[1].release_step == 15
+        assert custom_ghosts[2].release_step == 45
+        assert custom_ghosts[3].release_step == 75
 
     def test_scatter_chase_cycle(self) -> None:
         maze = GoogleMaze()
@@ -63,20 +69,21 @@ class TestGoogleGhost:
             spawn=Position(7, 7),
             release_step=0,
         )
+
         # Step 0: Scatter
         ghost.update_mode(step_count=0, power_mode_active=False)
         assert ghost.current_mode == GhostMode.SCATTER
 
-        # Step 6: Still Scatter (7 steps: 0..6)
-        ghost.update_mode(step_count=6, power_mode_active=False)
+        # Step 9: Still Scatter (10 steps: 0..9)
+        ghost.update_mode(step_count=9, power_mode_active=False)
         assert ghost.current_mode == GhostMode.SCATTER
 
-        # Step 7: Chase (20 steps: 7..26)
-        ghost.update_mode(step_count=7, power_mode_active=False)
+        # Step 10: Chase (20 steps: 10..29)
+        ghost.update_mode(step_count=10, power_mode_active=False)
         assert ghost.current_mode == GhostMode.CHASE
 
-        # Step 27: Second Scatter cycle
-        ghost.update_mode(step_count=27, power_mode_active=False)
+        # Step 30: Second Scatter cycle
+        ghost.update_mode(step_count=30, power_mode_active=False)
         assert ghost.current_mode == GhostMode.SCATTER
 
     def test_targeting_rules(self) -> None:
@@ -101,11 +108,15 @@ class TestGoogleGhost:
         expected_pinky = Position(6, 5)
         assert pinky.get_target_tile(maze, pacman_pos, pacman_action) == expected_pinky
 
-        # Inky targets vector mirrored from Blinky around pivot 2 ahead
-        # Pivot = (10 - 2, 5) = (8, 5)
-        # Target = 2 * (8, 5) - (12, 5) = (16 - 12, 10 - 5) = (4, 5)
-        expected_inky = Position(4, 5)
-        assert inky.get_target_tile(maze, pacman_pos, pacman_action, blinky_pos) == expected_inky
+        # Inky targets 4 tiles behind Pac-Man (opposite of his direction)
+        # Pac-Man (10, 5) facing UP, delta (-1, 0): (10 + 4, 5) = (14, 5)
+                # Inky far from Pac-Man: targets the mirrored point across the board
+        inky.position = Position(1, 1)
+        assert inky.get_target_tile(maze, pacman_pos, pacman_action, blinky_pos) == Position(5, 10)
+
+        # Inky close to Pac-Man: chases directly
+        inky.position = Position(10, 6)
+        assert inky.get_target_tile(maze, pacman_pos, pacman_action, blinky_pos) == pacman_pos
 
         # Clyde: Chases if distance > 6, retreats to scatter corner if <= 6
         # Put Clyde close (e.g. at (10, 6), distance = 1)

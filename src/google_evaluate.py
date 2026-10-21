@@ -51,14 +51,16 @@ def run_evaluation_episodes(
     base_seed: int = DEFAULT_SEED,
     render: bool = False,
     render_fps: int = GOOGLE_FPS,
+    active_ghosts: int = 4,
+    chase_strength: float = 1.0,
 ) -> list[EpisodeMetrics]:
     """Run n_episodes with distinct seeds and record performance."""
     render_mode = "human" if render else None
     env = GoogleEnvironment(
         render_mode=render_mode,
         render_fps=render_fps,
-        active_ghost_count=4,
-        chase_strength=1.0,
+        active_ghost_count=active_ghosts,
+        chase_strength=chase_strength,
     )
 
     metrics_list: list[EpisodeMetrics] = []
@@ -144,6 +146,8 @@ def evaluate_and_compare(
     base_seed: int = DEFAULT_SEED,
     render: bool = False,
     results_dir: Path = GOOGLE_RESULTS_DIR,
+    active_ghosts: int = 4,
+    chase_strength: float = 1.0,
 ) -> tuple[dict[str, float], dict[str, float]]:
     """Evaluate both PPO agent and Random Baseline and print comparison."""
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -160,13 +164,18 @@ def evaluate_and_compare(
     all_records: list[EpisodeMetrics] = []
 
     # 1. Random Baseline Evaluation
-    print(f"\nEvaluating Random-Action Pac-Man baseline across {n_episodes} seeds...")
+    print(
+        f"\nEvaluating Random-Action Pac-Man baseline across {n_episodes} seeds "
+        f"(active_ghosts={active_ghosts}, chase_strength={chase_strength})..."
+    )
     random_metrics = run_evaluation_episodes(
         agent_type="random",
         model=None,
         n_episodes=n_episodes,
         base_seed=base_seed,
         render=render and not has_model,
+        active_ghosts=active_ghosts,
+        chase_strength=chase_strength,
     )
     all_records.extend(random_metrics)
     random_summary = compute_summary(random_metrics)
@@ -174,20 +183,27 @@ def evaluate_and_compare(
     # 2. Trained Agent Evaluation
     ppo_summary: dict[str, float] = {}
     if has_model and model is not None:
-        print(f"Evaluating Trained PPO Pac-Man agent across {n_episodes} seeds...")
+        print(
+            f"Evaluating Trained PPO Pac-Man agent across {n_episodes} seeds "
+            f"(active_ghosts={active_ghosts}, chase_strength={chase_strength})..."
+        )
         ppo_metrics = run_evaluation_episodes(
             agent_type="ppo",
             model=model,
             n_episodes=n_episodes,
             base_seed=base_seed,
             render=render,
+            active_ghosts=active_ghosts,
+            chase_strength=chase_strength,
         )
         all_records.extend(ppo_metrics)
         ppo_summary = compute_summary(ppo_metrics)
 
     # 3. Print Side-by-Side Comparison
+    config_banner = f"ghosts={active_ghosts}, chase_strength={chase_strength}"
     print("\n" + "=" * 76)
     print(f"{'GOOGLE PAC-MAN EVALUATION RESULTS (' + str(n_episodes) + ' EPISODES)':^76}")
+    print(f"{'[' + config_banner + ']':^76}")
     print("=" * 76)
     print(f"{'Metric':<28} | {'Random Baseline':<20} | {'Trained PPO Agent':<20}")
     print("-" * 76)
@@ -263,6 +279,19 @@ def main() -> None:
         action="store_true",
         help="Watch live rendering via Pygame window",
     )
+    parser.add_argument(
+        "--ghosts",
+        type=int,
+        default=4,
+        choices=[1, 2, 3, 4],
+        help="Number of active ghosts (default: 4)",
+    )
+    parser.add_argument(
+        "--chase-strength",
+        type=float,
+        default=1.0,
+        help="Ghost chase strength probability 0.0-1.0 (default: 1.0)",
+    )
     args = parser.parse_args()
 
     evaluate_and_compare(
@@ -270,9 +299,12 @@ def main() -> None:
         n_episodes=args.episodes,
         base_seed=args.seed,
         render=args.render,
+        active_ghosts=args.ghosts,
+        chase_strength=args.chase_strength,
     )
 
 
 if __name__ == "__main__":
     main()
+
 

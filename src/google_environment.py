@@ -60,6 +60,8 @@ class GoogleEnvironment(gym.Env):
         reward_config: RewardConfig = GOOGLE_REWARDS,
         power_mode_duration: int = GOOGLE_POWER_MODE_DURATION,
         render_fps: int = GOOGLE_FPS,
+        ghost_release_schedule: Sequence[int] | None = None,
+        ghost_release_interval: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -79,6 +81,8 @@ class GoogleEnvironment(gym.Env):
         self.reward_config = reward_config
         self.power_mode_duration = power_mode_duration
         self.render_fps = render_fps
+        self.ghost_release_schedule = ghost_release_schedule
+        self.ghost_release_interval = ghost_release_interval
 
         # Maze and ghosts
         self.maze = GoogleMaze(layout=maze_layout)
@@ -86,6 +90,8 @@ class GoogleEnvironment(gym.Env):
             self.maze,
             chase_strength=self.chase_strength,
             active_ghost_count=self.active_ghost_count,
+            release_schedule=self.ghost_release_schedule,
+            release_interval=self.ghost_release_interval,
         )
 
         self.action_space = spaces.Discrete(4)

@@ -42,6 +42,7 @@ from google_config import (
     GOOGLE_MODELS_DIR,
     GOOGLE_RESULTS_DIR,
     GoogleCurriculumStage,
+    calculate_stage_budgets,
 )
 from google_environment import GoogleEnvironment
 
@@ -152,12 +153,18 @@ def train_google_curriculum(
     print(f"Saving results to: {results_dir}")
     print("=" * 70)
 
+    if total_steps_override is not None and len(stages) == 3:
+        budget_splits = calculate_stage_budgets(total_steps_override)
+    else:
+        budget_splits = None
+
     for i, stage in enumerate(stages):
-        stage_steps = (
-            total_steps_override // len(stages)
-            if total_steps_override is not None
-            else stage.max_steps
-        )
+        if budget_splits is not None:
+            stage_steps = budget_splits[i]
+        elif total_steps_override is not None:
+            stage_steps = total_steps_override // len(stages)
+        else:
+            stage_steps = stage.max_steps
         stage_steps = max(stage_steps, 256)
 
         stage_log_dir = logs_dir / f"stage_{stage.stage_id}"

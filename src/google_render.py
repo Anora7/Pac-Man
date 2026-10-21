@@ -5,8 +5,8 @@ Features:
   - Yellow Pac-Man with animated directional mouth.
   - Distinct ghosts (Blinky, Pinky, Inky, Clyde) with rounded tops,
     wavy bottom skirts, and directional eyes.
-  - High-contrast frightened ghosts (white/light-grey body with red/pink face)
-    that flash during the final countdown of power mode.
+  - Light-blue frightened ghosts with navy eyes that flash white
+    during the final countdown of power mode.
   - High-contrast walls and dark background.
   - Multi-line HUD displaying score, episode, step, pellets, and ghost modes.
 """
@@ -23,8 +23,6 @@ from config import ACTION_DELTAS, Action
 from google_config import (
     GOOGLE_CELL_SIZE,
     GOOGLE_COLOR_BACKGROUND,
-    GOOGLE_COLOR_FRIGHTENED,
-    GOOGLE_COLOR_FRIGHTENED_FACE,
     GOOGLE_COLOR_HUD,
     GOOGLE_COLOR_PACMAN,
     GOOGLE_COLOR_PELLET,
@@ -41,6 +39,10 @@ from maze import Position
 _HUD_HEIGHT: int = 90
 _HUD_PADDING: int = 12
 _HUD_FONT_SIZE: int = 20
+
+_FRIGHTENED_BODY = (140, 200, 255)   # light blue
+_FRIGHTENED_FLASH = (255, 255, 255)  # white, power mode ending
+_FRIGHTENED_EYE = (20, 30, 90)       # dark navy eyes
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,7 @@ class GoogleRenderer:
         self._initialized: bool = False
         self._window_closed: bool = False
         self._mouth_phase: int = 0
+        self._paused: bool = False
 
     @property
     def window_size(self) -> tuple[int, int]:
@@ -112,6 +115,22 @@ class GoogleRenderer:
         self._font = pygame.font.Font(None, _HUD_FONT_SIZE + 4)
         self._small_font = pygame.font.Font(None, _HUD_FONT_SIZE)
         self._initialized = True
+    
+    def _handle_events(self) -> bool:
+        """Process window and key events. Returns False if the window closed."""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self._window_closed = True
+                self.close()
+                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_UP, pygame.K_EQUALS, pygame.K_PLUS):
+                    self.fps = min(60, self.fps + 1)
+                elif event.key in (pygame.K_DOWN, pygame.K_MINUS):
+                    self.fps = max(1, self.fps - 1)
+                elif event.key == pygame.K_SPACE:
+                    self._paused = not self._paused
+        return True
 
     def render(self, state: GoogleRenderState) -> None:
         """Render a single frame snapshot."""
@@ -123,11 +142,8 @@ class GoogleRenderer:
         assert self._surface is not None
         assert self._clock is not None
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self._window_closed = True
-                self.close()
-                return
+        if not self._handle_events():
+            return
 
         self._mouth_phase = (self._mouth_phase + 1) % 8
 
@@ -139,6 +155,12 @@ class GoogleRenderer:
         self._draw_hud(state)
 
         pygame.display.flip()
+        while self._paused:
+            if not self._handle_events():
+                return
+            self._draw_hud(state)
+            pygame.display.flip()
+            self._clock.tick(30)
         self._clock.tick(self.fps)
 
     def close(self) -> None:
@@ -173,12 +195,10 @@ class GoogleRenderer:
         for r in range(maze.height):
             for c in range(maze.width):
                 if wall_grid[r, c]:
-                    # Draw solid wall tile with outline
                     rect = self._cell_rect(r, c)
                     pygame.draw.rect(self._surface, GOOGLE_COLOR_WALL, rect)
                     pygame.draw.rect(self._surface, (55, 70, 225), rect, 1)
 
-        # Draw ghost house door line in pink/white
         doors = maze.ghost_house_doors()
         for d in doors:
             rect = self._cell_rect(d.row, d.col)
@@ -208,7 +228,6 @@ class GoogleRenderer:
                         center,
                         self._power_radius,
                     )
-                    # Inner glow
                     pygame.draw.circle(
                         self._surface,
                         (255, 255, 220),
@@ -222,7 +241,6 @@ class GoogleRenderer:
         center = self._cell_center(state.pacman_position.row, state.pacman_position.col)
         r = self._entity_radius
 
-        # Determine facing angle (in radians)
         angle_map = {
             Action.RIGHT: 0.0,
             Action.DOWN: math.pi / 2,
@@ -231,14 +249,11 @@ class GoogleRenderer:
         }
         facing_angle = angle_map.get(state.pacman_action, 0.0)
 
-        # Mouth angle cycles from 0 (closed) to 0.4 rad (open)
         mouth_opening = abs(self._mouth_phase - 4) / 4.0 * 0.45
 
         if mouth_opening < 0.05:
-            # Full circle when mouth is nearly closed
             pygame.draw.circle(self._surface, GOOGLE_COLOR_PACMAN, center, r)
         else:
-            # Pie wedge polygon
             start_angle = facing_angle + mouth_opening
             end_angle = facing_angle + 2 * math.pi - mouth_opening
             points = [center]
@@ -256,38 +271,31 @@ class GoogleRenderer:
         assert self._surface is not None
 
         for ghost in state.ghosts:
-            if not ghost.is_released:
-                # Inside house, draw dimmer or slightly smaller
-                pass
-
             center = self._cell_center(ghost.position.row, ghost.position.col)
             r = self._entity_radius
 
-            # Determine body color:
             normal_color = GHOST_COLORS.get(ghost.identity, (200, 50, 50))
             if ghost.is_vulnerable:
-                # High contrast frightened: white/light grey, flashes in last 8 steps
+                # Light blue, flashing white in the last 8 steps of power mode
                 if state.power_mode_steps_remaining <= 8 and (state.step % 2 == 0):
-                    body_color = normal_color
+                    body_color = _FRIGHTENED_FLASH
                 else:
-                    body_color = GOOGLE_COLOR_FRIGHTENED
+                    body_color = _FRIGHTENED_BODY
             else:
                 body_color = normal_color
 
             cx, cy = center
-            top_y = cy - r
             bot_y = cy + r
             left_x = cx - r
-            right_x = cx + r
 
-            # 1. Rounded head (semicircle)
+            # 1. Rounded head
             pygame.draw.circle(self._surface, body_color, (cx, cy - r // 4), r)
 
-            # 2. Main body torso (rect)
+            # 2. Main body torso
             torso_rect = pygame.Rect(left_x, cy - r // 4, 2 * r, r + r // 4)
             pygame.draw.rect(self._surface, body_color, torso_rect)
 
-            # 3. Wavy bottom skirt (3 scallops / triangles)
+            # 3. Wavy bottom skirt
             skirt_width = (2 * r) / 3.0
             for i in range(3):
                 x0 = left_x + i * skirt_width
@@ -295,26 +303,23 @@ class GoogleRenderer:
                 x2 = x0 + skirt_width
                 y_peak = bot_y
                 y_notch = bot_y - (r // 3)
-                # Invert notch for ghost legs: clear background triangle
                 notch_poly = [(x0, y_peak), (x1, y_notch), (x2, y_peak)]
                 pygame.draw.polygon(self._surface, GOOGLE_COLOR_BACKGROUND, notch_poly)
 
-            # 4. Eyes & Pupils
+            # 4. Eyes and pupils
             eye_offset_x = r // 2
             eye_offset_y = r // 3
             left_eye_center = (cx - eye_offset_x, cy - eye_offset_y)
             right_eye_center = (cx + eye_offset_x, cy - eye_offset_y)
 
             if ghost.is_vulnerable:
-                # Frightened face (pink/red eyes and wavy mouth)
-                pygame.draw.circle(self._surface, GOOGLE_COLOR_FRIGHTENED_FACE, left_eye_center, self._eye_radius)
-                pygame.draw.circle(self._surface, GOOGLE_COLOR_FRIGHTENED_FACE, right_eye_center, self._eye_radius)
+                # Frightened face: dark navy eyes (not red)
+                pygame.draw.circle(self._surface, _FRIGHTENED_EYE, left_eye_center, self._eye_radius)
+                pygame.draw.circle(self._surface, _FRIGHTENED_EYE, right_eye_center, self._eye_radius)
             else:
-                # White sclera
                 pygame.draw.circle(self._surface, (255, 255, 255), left_eye_center, self._eye_radius)
                 pygame.draw.circle(self._surface, (255, 255, 255), right_eye_center, self._eye_radius)
 
-                # Pupil direction offset based on last action
                 p_dx, p_dy = 0, 0
                 if ghost.last_action == Action.UP:
                     p_dy = -self._pupil_radius
@@ -344,7 +349,6 @@ class GoogleRenderer:
         )
         pygame.draw.line(self._surface, GOOGLE_COLOR_WALL, (0, hud_top), (self.window_w, hud_top), 2)
 
-        # Line 1: Score | Step | Pellets | Episode
         line1 = (
             f"Score: {state.score:4.0f}  "
             f"Step: {state.step:4d}  "
@@ -354,7 +358,6 @@ class GoogleRenderer:
         s1 = self._font.render(line1, True, GOOGLE_COLOR_HUD)
         self._surface.blit(s1, (_HUD_PADDING, hud_top + 10))
 
-        # Line 2: Power Mode & Ghost modes
         if state.power_mode_active:
             status_text = f"POWER MODE: {state.power_mode_steps_remaining} steps left!"
             status_color = GOOGLE_COLOR_POWER_PELLET
@@ -367,3 +370,10 @@ class GoogleRenderer:
         s2 = self._small_font.render(status_text, True, status_color)
         self._surface.blit(s2, (_HUD_PADDING, hud_top + 45))
 
+        pause_note = "  [PAUSED]" if self._paused else ""
+        s3 = self._small_font.render(
+            f"Speed: {self.fps} fps (UP/DOWN to change, SPACE to pause){pause_note}",
+            True,
+            (150, 150, 180),
+        )
+        self._surface.blit(s3, (_HUD_PADDING, hud_top + 67))

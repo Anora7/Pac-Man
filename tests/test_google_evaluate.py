@@ -75,3 +75,17 @@ class TestGoogleEvaluate:
         assert rand_sum["episodes"] == 2.0
         assert (tmp_path / "results" / "evaluation_episodes.csv").exists()
 
+    def test_evaluate_with_custom_ghosts_and_chase_strength(self, tmp_path: Path) -> None:
+        """Requirement 4: Evaluate with custom ghost count and chase strength (e.g. Stage 1)."""
+        rand_sum, _ = evaluate_and_compare(
+            model_path=None,
+            n_episodes=2,
+            base_seed=42,
+            render=False,
+            results_dir=tmp_path / "results",
+            active_ghosts=2,
+            chase_strength=0.5,
+        )
+        assert rand_sum["episodes"] == 2.0
+        assert "mean_survival_steps" in rand_sum
+
