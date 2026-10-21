@@ -178,7 +178,7 @@ class GoogleCurriculumStage:
 GOOGLE_CURRICULUM_STAGES: tuple[GoogleCurriculumStage, ...] = (
     GoogleCurriculumStage(stage_id=1, active_ghosts=2, chase_strength=0.50, max_steps=150_000),
     GoogleCurriculumStage(stage_id=2, active_ghosts=3, chase_strength=0.75, max_steps=100_000),
-    GoogleCurriculumStage(stage_id=3, active_ghosts=4, chase_strength=1.00, max_steps=50_000),
+    GoogleCurriculumStage(stage_id=3, active_ghosts=4, chase_strength=0.85 , max_steps=50_000),
 )
 
 GOOGLE_STAGE_BUDGET_RATIOS: tuple[float, float, float] = (0.50, 0.33, 0.17)

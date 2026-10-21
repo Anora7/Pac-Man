@@ -1,0 +1,4 @@
+stage,active_ghosts,chase_strength,episodes,mean_pellets,clear_rate,mean_survival_steps,catch_rate,promoted_reason,elapsed_seconds
+1,2,0.5,4178,70.25,0.0275,120.08,0.9734,max_steps,1891.39
+2,3,0.75,2292,108.04,0.0262,144.7,0.9743,max_steps,1214.75
+3,4,1.0,2913,12.64,0.0,59.05,1.0,max_steps,832.21
