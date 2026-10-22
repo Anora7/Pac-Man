@@ -11,10 +11,10 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pytest
 
 from config import Action
-from google_config import GOOGLE_CELL_SIZE, GOOGLE_FPS
-from google_ghost import create_google_ghosts
-from google_maze import GoogleMaze
-from google_render import GoogleRenderer, GoogleRenderState
+from v2_config import GOOGLE_CELL_SIZE, GOOGLE_FPS
+from v2_ghost import create_google_ghosts
+from v2_maze import GoogleMaze
+from v2_render import GoogleRenderer, GoogleRenderState
 from maze import Position
 
 

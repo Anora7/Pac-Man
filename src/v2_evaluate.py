@@ -23,12 +23,12 @@ import numpy as np
 from stable_baselines3 import PPO
 
 from config import DEFAULT_SEED
-from google_config import (
+from v2_config import (
     GOOGLE_FPS,
     GOOGLE_MODELS_DIR,
     GOOGLE_RESULTS_DIR,
 )
-from google_environment import GoogleEnvironment
+from v2_environment import GoogleEnvironment
 
 
 @dataclass

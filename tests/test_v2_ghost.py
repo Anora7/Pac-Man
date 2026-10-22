@@ -8,18 +8,18 @@ import numpy as np
 import pytest
 
 from config import Action
-from google_config import (
+from v2_config import (
     GhostIdentity,
     GHOST_SCATTER_CORNERS,
     GOOGLE_CHASE_STEPS,
     GOOGLE_SCATTER_STEPS,
 )
-from google_ghost import (
+from v2_ghost import (
     GoogleGhost,
     GhostMode,
     create_google_ghosts,
 )
-from google_maze import GoogleMaze
+from v2_maze import GoogleMaze
 from maze import Position
 
 

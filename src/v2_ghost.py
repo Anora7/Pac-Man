@@ -13,7 +13,7 @@ from enum import Enum, auto
 import numpy as np
 
 from config import ACTION_DELTAS, Action
-from google_config import (
+from v2_config import (
     OPPOSITE_ACTIONS,
     GHOST_SCATTER_CORNERS,
     GhostIdentity,
@@ -24,7 +24,7 @@ from google_config import (
     GOOGLE_PINKY_LOOKAHEAD,
     GOOGLE_SCATTER_STEPS,
 )
-from google_maze import GoogleMaze
+from v2_maze import GoogleMaze
 from maze import Position
 
 
@@ -293,7 +293,7 @@ def create_google_ghosts(
     elif release_interval is not None:
         schedule = [i * release_interval for i in range(4)]
     else:
-        from google_config import GOOGLE_GHOST_RELEASE_SCHEDULE
+        from v2_config import GOOGLE_GHOST_RELEASE_SCHEDULE
         schedule = list(GOOGLE_GHOST_RELEASE_SCHEDULE)
 
     ghost_configs = [

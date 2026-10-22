@@ -1,28 +1,28 @@
 # Google Pac-Man Version Documentation
 
 ## Step 0 Reuse Report (Phase 1)
-1. `config.py`: Import `Action`, `ACTION_DELTAS`, `CellType`, `RewardConfig`, and `ObservationConfig` as shared foundations, extending them in `google_config.py` with custom 16x16 maze layout and ghost parameters.
-2. `maze.py`: Import `Position` and subclass `Maze` into `GoogleMaze` in `src/google_maze.py`, reusing `is_wall`, `is_walkable`, `has_pellet`, `consume_pellet`, `pellets_remaining`, and grid generators.
+1. `config.py`: Import `Action`, `ACTION_DELTAS`, `CellType`, `RewardConfig`, and `ObservationConfig` as shared foundations, extending them in `v2_config.py` with custom 16x16 maze layout and ghost parameters.
+2. `maze.py`: Import `Position` and subclass `Maze` into `GoogleMaze` in `src/v2_maze.py`, reusing `is_wall`, `is_walkable`, `has_pellet`, `consume_pellet`, `pellets_remaining`, and grid generators.
 3. `maze.py` BFS routing: Reuse and generalize BFS pathfinding methods (`nearest_pellet_path`, `distances_from`) for target tile distance calculations and reachable-cell validation.
 4. `rewards.py`: Reuse `calculate_step_reward` and `RewardConfig` for Pac-Man reward math, passing new power pellet, clear, caught, and pellet counts directly.
 5. `ghost_policies.py`: Follow the `GhostPolicy` protocol to implement deterministic BFS shortest-path targeting and randomized fallback actions.
-6. `ghost.py`: Reuse `GhostState` concept while creating `GoogleGhost` in `src/google_ghost.py` to support Blinky, Pinky, Inky, and Clyde with scatter/chase cycles and release scheduling.
-7. `renderer.py`: Subclass or adapt `PacmanRenderer` into `GoogleRenderer` in `src/google_render.py` using `RenderState`, updating colors, animated mouth, and ghost shapes.
+6. `ghost.py`: Reuse `GhostState` concept while creating `GoogleGhost` in `src/v2_ghost.py` to support Blinky, Pinky, Inky, and Clyde with scatter/chase cycles and release scheduling.
+7. `renderer.py`: Subclass or adapt `PacmanRenderer` into `GoogleRenderer` in `src/v2_render.py` using `RenderState`, updating colors, animated mouth, and ghost shapes.
 8. `observation_metadata.py`: Reuse `save_observation_config` and `load_observation_config` for serializing model feature configurations to JSON sidecars.
-9. `train.py` / `train_curriculum.py`: Follow the SB3 PPO training pipeline structure, callbacks, and monitor logging in `src/google_train.py` for curriculum progression.
-10. `evaluate.py`: Reuse metric dataclasses and episode evaluation logic in `src/google_evaluate.py` to report mean pellets, survival steps, clear rate, and caught rate across 30 seeds.
+9. `train.py` / `train_curriculum.py`: Follow the SB3 PPO training pipeline structure, callbacks, and monitor logging in `src/v2_train.py` for curriculum progression.
+10. `evaluate.py`: Reuse metric dataclasses and episode evaluation logic in `src/v2_evaluate.py` to report mean pellets, survival steps, clear rate, and caught rate across 30 seeds.
 
 ---
 
 ## Change Log (Files Created)
 - `docs/GOOGLE_VERSION.md`: Comprehensive documentation, design specifications, command reference, and progress tracking.
-- `src/google_config.py`: Central configuration module defining 16x16 maze layout, ghost identities, colors, power mode parameters, rewards, and curriculum stage specifications.
-- `src/google_maze.py`: `GoogleMaze` class subclassing `Maze`, providing 16x16 layout, BFS pellet reachability verification, ghost house door access, and walkable projection helpers.
-- `src/google_ghost.py`: `GoogleGhost` class implementing 4 classic personalities (Blinky, Pinky, Inky, Clyde), BFS shortest-path movement, turn restrictions (no reverse), scatter/chase cycles, frightened retreat, house release schedules, and curriculum chase strength.
-- `src/google_environment.py`: Gymnasium environment `GoogleEnvironment` integrating the 16x16 maze, 4 rule-based ghosts, power pellet mechanics, scaled 1321-element observation space, and reward shaping.
-- `src/google_render.py`: Pygame-based `GoogleRenderer` featuring animated Pac-Man mouth, distinct ghost shapes (rounded head, wavy skirt, directional pupils), high-contrast flashing frightened ghosts, dark background, and HUD.
-- `src/google_train.py`: SB3 PPO curriculum training pipeline across chase strength (0.5 -> 0.75 -> 1.0) and active ghosts (2 -> 3 -> 4), logging to `results/google/` and saving models to `models/google/`.
-- `src/google_evaluate.py`: Comprehensive evaluation script running 30 seeds for both trained PPO agent and random-action Pac-Man baseline, outputting summary tables and exporting to CSV.
+- `src/v2_config.py`: Central configuration module defining 16x16 maze layout, ghost identities, colors, power mode parameters, rewards, and curriculum stage specifications.
+- `src/v2_maze.py`: `GoogleMaze` class subclassing `Maze`, providing 16x16 layout, BFS pellet reachability verification, ghost house door access, and walkable projection helpers.
+- `src/v2_ghost.py`: `GoogleGhost` class implementing 4 classic personalities (Blinky, Pinky, Inky, Clyde), BFS shortest-path movement, turn restrictions (no reverse), scatter/chase cycles, frightened retreat, house release schedules, and curriculum chase strength.
+- `src/v2_environment.py`: Gymnasium environment `GoogleEnvironment` integrating the 16x16 maze, 4 rule-based ghosts, power pellet mechanics, scaled 1321-element observation space, and reward shaping.
+- `src/v2_render.py`: Pygame-based `GoogleRenderer` featuring animated Pac-Man mouth, distinct ghost shapes (rounded head, wavy skirt, directional pupils), high-contrast flashing frightened ghosts, dark background, and HUD.
+- `src/v2_train.py`: SB3 PPO curriculum training pipeline across chase strength (0.5 -> 0.75 -> 1.0) and active ghosts (2 -> 3 -> 4), logging to `results/google/` and saving models to `models/google/`.
+- `src/v2_evaluate.py`: Comprehensive evaluation script running 30 seeds for both trained PPO agent and random-action Pac-Man baseline, outputting summary tables and exporting to CSV.
 - `tests/test_google_maze.py`: Unit tests verifying 16x16 dimensions, 4 corner power pellets, BFS reachability of 100% of pellets, and absence of dead-end traps.
 - `tests/test_google_ghost.py`: Unit tests verifying ghost factory, release schedules, scatter/chase cycles, targeting rules for all 4 ghosts, turn reversal restrictions, and frightened mode retreat/respawn.
 - `tests/test_google_environment.py`: Unit tests verifying observation space (1321,), reset, step execution, pellet eating, power mode activation, ghost eating, and caught termination.
@@ -110,21 +110,21 @@
 ### 3. PPO Curriculum Training
 - **Quick Smoke Test (~20k steps)**:
   ```powershell
-  .\.venvRL\Scripts\python.exe src/google_train.py --smoke-test
+  .\.venvRL\Scripts\python.exe src/v2_train.py --smoke-test
   ```
 - **Full Run (~1M steps)**:
   ```powershell
-  .\.venvRL\Scripts\python.exe src/google_train.py --steps 1000000
+  .\.venvRL\Scripts\python.exe src/v2_train.py --steps 1000000
   ```
 
 ### 4. Evaluation and Baseline Comparison
 - **Headless 30-episode evaluation against random baseline**:
   ```powershell
-  .\.venvRL\Scripts\python.exe src/google_evaluate.py --episodes 30
+  .\.venvRL\Scripts\python.exe src/v2_evaluate.py --episodes 30
   ```
 - **Live Rendering Demo (watch game played live)**:
   ```powershell
-  .\.venvRL\Scripts\python.exe src/google_evaluate.py --episodes 5 --render
+  .\.venvRL\Scripts\python.exe src/v2_evaluate.py --episodes 5 --render
   ```
 
 ---

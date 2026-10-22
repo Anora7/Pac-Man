@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 import pygame
 
 from config import ACTION_DELTAS, Action
-from google_config import (
+from v2_config import (
     GOOGLE_CELL_SIZE,
     GOOGLE_COLOR_BACKGROUND,
     GOOGLE_COLOR_HUD,
@@ -32,8 +32,8 @@ from google_config import (
     GHOST_COLORS,
     GhostIdentity,
 )
-from google_ghost import GhostMode, GoogleGhost
-from google_maze import GoogleMaze
+from v2_ghost import GhostMode, GoogleGhost
+from v2_maze import GoogleMaze
 from maze import Position
 
 _HUD_HEIGHT: int = 90

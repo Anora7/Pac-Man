@@ -26,7 +26,7 @@ from config import (
     CellType,
     RewardConfig,
 )
-from google_config import (
+from v2_config import (
     GOOGLE_COLOR_BACKGROUND,
     GOOGLE_FPS,
     GOOGLE_MAX_STEPS,
@@ -36,13 +36,13 @@ from google_config import (
     GOOGLE_REWARDS,
     GhostIdentity,
 )
-from google_ghost import GoogleGhost, create_google_ghosts
-from google_maze import GoogleMaze
+from v2_ghost import GoogleGhost, create_google_ghosts
+from v2_maze import GoogleMaze
 from maze import Position
 from rewards import calculate_step_reward
 
 if TYPE_CHECKING:
-    from google_render import GoogleRenderer
+    from v2_render import GoogleRenderer
 
 
 class GoogleEnvironment(gym.Env):
@@ -434,13 +434,13 @@ class GoogleEnvironment(gym.Env):
     def render(self) -> None:
         """Render frame using GoogleRenderer."""
         if self._renderer is None:
-            from google_render import GoogleRenderer
+            from v2_render import GoogleRenderer
             self._renderer = GoogleRenderer(
                 cell_size=36,
                 fps=self.render_fps,
                 render_mode="human",
             )
-        from google_render import GoogleRenderState
+        from v2_render import GoogleRenderState
         state = GoogleRenderState(
             maze=self.maze,
             pacman_position=self.pacman_pos or self.maze.pacman_spawn(),

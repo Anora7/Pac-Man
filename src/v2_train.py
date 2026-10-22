@@ -36,7 +36,7 @@ from config import (
     N_STEPS,
     DEFAULT_SEED,
 )
-from google_config import (
+from v2_config import (
     GOOGLE_CURRICULUM_STAGES,
     GOOGLE_LOGS_DIR,
     GOOGLE_MODELS_DIR,
@@ -44,7 +44,7 @@ from google_config import (
     GoogleCurriculumStage,
     calculate_stage_budgets,
 )
-from google_environment import GoogleEnvironment
+from v2_environment import GoogleEnvironment
 
 
 class GoogleCurriculumCallback(BaseCallback):
@@ -304,8 +304,8 @@ def main() -> None:
     total_steps = 20_000 if args.smoke_test else args.steps
 
     print("\n[COMMAND REFERENCE]")
-    print("Smoke test:  python src/google_train.py --smoke-test")
-    print("Full run:    python src/google_train.py --steps 1000000\n")
+    print("Smoke test:  python src/v2_train.py --smoke-test")
+    print("Full run:    python src/v2_train.py --steps 1000000\n")
 
     train_google_curriculum(total_steps_override=total_steps, seed=args.seed)
 

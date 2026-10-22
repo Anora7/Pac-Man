@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import numpy as np
 
-from google_evaluate import (
+from v2_evaluate import (
     EpisodeMetrics,
     compute_summary,
     evaluate_and_compare,

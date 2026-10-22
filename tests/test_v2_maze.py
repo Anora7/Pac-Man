@@ -8,12 +8,12 @@ import numpy as np
 import pytest
 
 from config import CellType, Action
-from google_config import (
+from v2_config import (
     GOOGLE_MAZE_HEIGHT,
     GOOGLE_MAZE_WIDTH,
     GOOGLE_MAZE_LAYOUT,
 )
-from google_maze import GoogleMaze
+from v2_maze import GoogleMaze
 from maze import Position
 
 

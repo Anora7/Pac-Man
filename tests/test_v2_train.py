@@ -9,8 +9,8 @@ import pytest
 import numpy as np
 from stable_baselines3 import PPO
 
-from google_config import GoogleCurriculumStage
-from google_train import (
+from v2_config import GoogleCurriculumStage
+from v2_train import (
     GoogleCurriculumCallback,
     make_google_env,
     train_google_curriculum,
@@ -72,7 +72,7 @@ class TestGoogleTrain:
 
     def test_stage_budget_split(self) -> None:
         """Requirement 3: --steps 300000 split 50% stage 1, 33% stage 2, 17% stage 3."""
-        from google_config import calculate_stage_budgets
+        from v2_config import calculate_stage_budgets
         s1, s2, s3 = calculate_stage_budgets(300_000)
         assert s1 == 150_000  # 50%
         assert s2 == 99_000   # 33%

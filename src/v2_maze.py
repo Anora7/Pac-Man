@@ -13,7 +13,7 @@ from collections import deque
 import numpy as np
 
 from config import CellType, ACTION_DELTAS, Action
-from google_config import (
+from v2_config import (
     GOOGLE_MAZE_HEIGHT,
     GOOGLE_MAZE_WIDTH,
     GOOGLE_MAZE_LAYOUT,

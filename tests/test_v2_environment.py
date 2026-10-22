@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 from config import Action, CellType
-from google_config import GOOGLE_MAX_STEPS
-from google_environment import GoogleEnvironment
+from v2_config import GOOGLE_MAX_STEPS
+from v2_environment import GoogleEnvironment
 from maze import Position
 
 
