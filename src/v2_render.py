@@ -1,5 +1,5 @@
 """
-Pygame renderer for the Google Pac-Man RL environment.
+Pygame renderer for the PAC-MAN RL environment.
 
 Features:
   - Yellow Pac-Man with animated directional mouth.
@@ -47,7 +47,7 @@ _FRIGHTENED_EYE = (20, 30, 90)       # dark navy eyes
 
 @dataclass(frozen=True)
 class GoogleRenderState:
-    """Immutable snapshot of Google Pac-Man state for rendering one frame."""
+    """Immutable snapshot of PAC-MAN state for rendering one frame."""
     maze: GoogleMaze
     pacman_position: Position
     pacman_action: Action | None
@@ -60,7 +60,7 @@ class GoogleRenderState:
 
 
 class GoogleRenderer:
-    """Pygame-based visual renderer for the Google Pac-Man environment."""
+    """Pygame-based visual renderer for the PAC-MAN environment."""
 
     def __init__(
         self,

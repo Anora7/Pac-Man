@@ -1,5 +1,5 @@
 """
-PPO curriculum training script for the Google Pac-Man RL project.
+PPO curriculum training script for the PAC-MAN RL project.
 
 Features:
   - Stable-Baselines3 PPO with MlpPolicy.
@@ -147,7 +147,7 @@ def train_google_curriculum(
     model: PPO | None = None
 
     print("=" * 70)
-    print("STARTING GOOGLE PAC-MAN PPO CURRICULUM TRAINING")
+    print("STARTING PAC-MAN PPO CURRICULUM TRAINING")
     print(f"Stages: {len(stages)} | Base Seed: {seed}")
     print(f"Saving models to: {models_dir}")
     print(f"Saving results to: {results_dir}")
@@ -281,7 +281,7 @@ def train_google_curriculum(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train Google Pac-Man PPO Agent")
+    parser = argparse.ArgumentParser(description="Train PAC-MAN PPO Agent")
     parser.add_argument(
         "--smoke-test",
         action="store_true",

@@ -1,5 +1,5 @@
 """
-Evaluation and demo script for the Google Pac-Man RL project.
+Evaluation and demo script for the PAC-MAN RL project.
 
 Features:
   - 30 episodes evaluated across seeds for both the trained PPO agent
@@ -202,7 +202,7 @@ def evaluate_and_compare(
     # 3. Print Side-by-Side Comparison
     config_banner = f"ghosts={active_ghosts}, chase_strength={chase_strength}"
     print("\n" + "=" * 76)
-    print(f"{'GOOGLE PAC-MAN EVALUATION RESULTS (' + str(n_episodes) + ' EPISODES)':^76}")
+    print(f"{'PAC-MAN EVALUATION RESULTS (' + str(n_episodes) + ' EPISODES)':^76}")
     print(f"{'[' + config_banner + ']':^76}")
     print("=" * 76)
     print(f"{'Metric':<28} | {'Random Baseline':<20} | {'Trained PPO Agent':<20}")
@@ -255,7 +255,7 @@ def evaluate_and_compare(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate Google Pac-Man Agent")
+    parser = argparse.ArgumentParser(description="Evaluate PAC-MAN Agent")
     parser.add_argument(
         "--model-path",
         type=str,

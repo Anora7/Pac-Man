@@ -1,0 +1,7 @@
+agent_type,episode,seed,score,pellets_collected,survival_steps,cleared,caught,ghosts_eaten
+random,1,43,-186.9,12,46,False,True,0
+random,2,44,-211.6,7,29,False,True,0
+random,3,45,-207.5,8,30,False,True,0
+ppo,1,43,-29.0,18,18,False,True,0
+ppo,2,44,982.0000000000013,111,152,False,True,0
+ppo,3,45,1270.300000000002,125,212,False,True,2
