@@ -109,7 +109,7 @@ class GoogleRenderer:
     def _init_pygame(self) -> None:
         """Initialize pygame display, clock, and fonts."""
         pygame.init()
-        pygame.display.set_caption("Google Pac-Man RL")
+        pygame.display.set_caption("Pac-Man RL")
         self._surface = pygame.display.set_mode((self.window_w, self.window_h))
         self._clock = pygame.time.Clock()
         self._font = pygame.font.Font(None, _HUD_FONT_SIZE + 4)
@@ -123,6 +123,7 @@ class GoogleRenderer:
                 self._window_closed = True
                 self.close()
                 return False
+            
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_UP, pygame.K_EQUALS, pygame.K_PLUS):
                     self.fps = min(60, self.fps + 1)
